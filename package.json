@@ -1,12 +1,15 @@
 {
   "name": "node-lightning-in-a-box",
   "version": "1.0.0",
-  "description": "Node server for Lightning In A Box functions",
+  "description": "Express server for Lightning In A Box functions",
   "main": "src/index.js",
   "scripts": {
     "start": "nodemon src/index.js localhost 8080"
   },
-  "dependencies": {},
+  "dependencies": {
+    "axios": "0.19.0",
+    "firebase-admin": "8.2.0"
+  },
   "devDependencies": {
     "nodemon": "1.18.4"
   },

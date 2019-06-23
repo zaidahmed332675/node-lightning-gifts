@@ -12,9 +12,7 @@
     "crypto-random-string": "3.0.1",
     "express": "4.17.1",
     "firebase-admin": "8.2.0",
-    "lodash": "4.17.11"
-  },
-  "devDependencies": {
+    "lodash": "4.17.11",
     "nodemon": "1.18.4"
   },
   "engines": {

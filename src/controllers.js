@@ -30,7 +30,7 @@ const db = admin.firestore();
 
 exports.createInvoice = ({ orderId, amount }) => {
   try {
-    const description = `Lightning in a Box gift for ${amount} sats`;
+    const description = `Lightning gift for ${amount} sats`;
 
     return openNodeApi.post("/charges", {
       order_id: orderId,

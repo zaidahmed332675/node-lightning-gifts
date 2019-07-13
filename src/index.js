@@ -7,12 +7,10 @@ const {
   showCurrencies,
   createInvoice,
   getInvoiceStatus,
-  getCrateInfo,
-  createCrate,
   redeemGift,
-  emptyCrate,
   checkRedeemStatus
 } = require("./controllers");
+const { getCrateInfo, createCrate, emptyCrate } = require("./models");
 
 const app = express();
 
@@ -135,7 +133,7 @@ app.post("/redeemStatus/:withdrawalId", (req, res, next) => {
     checkRedeemStatus(withdrawalId)
       .then(response => {
         const { reference, status } = response.data.data;
-        console.log("redeem status res", response.data.data);
+
         if (status === "confirmed") {
           emptyCrate(orderId).catch(error => {
             next(error);

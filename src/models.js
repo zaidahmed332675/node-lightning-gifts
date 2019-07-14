@@ -36,6 +36,7 @@ exports.createCrate = ({ orderId, chargeId, amount }) =>
     .collection(giftDb)
     .doc(orderId)
     .set({
+      id: orderId,
       amount,
       chargeId,
       spent: false,

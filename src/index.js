@@ -17,6 +17,7 @@ const {
     giftWithdrawTry,
     giftWithdrawFail
 } = require('./models');
+const { getInvoiceAmount } = require('./utils');
 
 const app = express();
 
@@ -96,11 +97,19 @@ app.post('/redeem/:orderId', (req, res, next) => {
     const { invoice } = req.body;
     const { orderId } = req.params;
 
+    const invoiceAmount = getInvoiceAmount(invoice);
+
     getCrateInfo(orderId)
         .then(response => {
             const { amount, spent } = response;
 
-            if (!spent || spent !== 'pending') {
+            if (invoiceAmount !== amount) {
+                next(new Error('BAD_INVOICE_AMOUNT'));
+            } else if (spent === 'pending') {
+                next(new Error('GIFT_REDEEM_PENDING'));
+            } else if (spent) {
+                next(new Error('GIFT_SPENT'));
+            } else {
                 redeemGift({ amount, invoice })
                     .then(response => {
                         const { id: withdrawalId, reference } = response.data.data;
@@ -120,8 +129,6 @@ app.post('/redeem/:orderId', (req, res, next) => {
                     .catch(error => {
                         next(error);
                     });
-            } else {
-                next(new Error('GIFT_SPENT'));
             }
         })
         .catch(error => {

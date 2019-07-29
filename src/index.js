@@ -1,6 +1,7 @@
 // NPM Dependencies
 const express = require('express');
 const cryptoRandomString = require('crypto-random-string');
+const rateLimit = require("express-rate-limit");
 
 // Module Dependencies
 const {
@@ -18,6 +19,11 @@ const {
     giftWithdrawFail
 } = require('./models');
 const { getInvoiceAmount } = require('./utils');
+
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 50
+});
 
 const app = express();
 
@@ -37,7 +43,7 @@ app.get('/currency', (req, res) => {
     });
 });
 
-app.post('/create', (req, res, next) => {
+app.post('/create', apiLimiter, (req, res, next) => {
     const { amount } = req.body;
     const orderId = cryptoRandomString({ length: 48 });
 
@@ -75,7 +81,7 @@ app.get('/status/:chargeId', (req, res, next) => {
         });
 });
 
-app.get('/gift/:orderId', (req, res, next) => {
+app.get('/gift/:orderId', apiLimiter, (req, res, next) => {
     const { orderId } = req.params;
 
     try {
@@ -93,7 +99,7 @@ app.get('/gift/:orderId', (req, res, next) => {
     }
 });
 
-app.post('/redeem/:orderId', (req, res, next) => {
+app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
     const { invoice } = req.body;
     const { orderId } = req.params;
 

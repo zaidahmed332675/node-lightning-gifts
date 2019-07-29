@@ -4,12 +4,14 @@
     "description": "Express server for Lightning Gifts functions",
     "main": "src/index.js",
     "scripts": {
+        "dev": "nodemon -r dotenv/config src/index.js",
         "start": "nodemon src/index.js"
     },
     "dependencies": {
         "axios": "0.19.0",
         "cors": "2.8.5",
         "crypto-random-string": "3.0.1",
+        "dotenv": "^8.0.0",
         "express": "4.17.1",
         "firebase-admin": "8.2.0",
         "lodash": "4.17.14",

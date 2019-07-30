@@ -1,7 +1,8 @@
 // NPM Dependencies
 const express = require('express');
 const cryptoRandomString = require('crypto-random-string');
-const rateLimit = require("express-rate-limit");
+const rateLimit = require('express-rate-limit');
+const _ = require('lodash');
 
 // Module Dependencies
 const {
@@ -47,16 +48,21 @@ app.post('/create', apiLimiter, (req, res, next) => {
     const { amount } = req.body;
     const orderId = cryptoRandomString({ length: 48 });
 
-    createInvoice({ orderId, amount })
-        .then(response => {
-            const { id: chargeId, status, lightning_invoice, amount } = response.data.data;
+    if (Number(amount) > 500000) {
+        res.statusCode = 400;
+        next(new Error('GIFT_AMOUNT_OVER_500K'));
+    } else {
+        createInvoice({ orderId, amount })
+          .then(response => {
+              const { id: chargeId, status, lightning_invoice, amount } = response.data.data;
 
-            res.json({ orderId, chargeId, status, lightning_invoice, amount });
-        })
-        .catch(error => {
-            console.log({ orderId, error });
-            next(error);
-        });
+              res.json({ orderId, chargeId, status, lightning_invoice, amount });
+          })
+          .catch(error => {
+              console.log({ orderId, error });
+              next(error);
+          });
+    }
 });
 
 app.get('/status/:chargeId', (req, res, next) => {
@@ -110,10 +116,13 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
             const { amount, spent } = response;
 
             if (invoiceAmount !== amount) {
+                res.statusCode = 400;
                 next(new Error('BAD_INVOICE_AMOUNT'));
             } else if (spent === 'pending') {
+                res.statusCode = 400;
                 next(new Error('GIFT_REDEEM_PENDING'));
             } else if (spent) {
+                res.statusCode = 400;
                 next(new Error('GIFT_SPENT'));
             } else {
                 redeemGift({ amount, invoice })
@@ -172,10 +181,10 @@ app.post('/redeemStatus/:withdrawalId', (req, res, next) => {
 
 // error handling
 app.use((error, req, res, next) => {
-    if (!error.statusCode) error.statusCode = 500;
+    const statusCode = _.defaultTo(_.defaultTo(error.statusCode, res.statusCode), 500);
     console.log('error:', error);
-    res.status(error.statusCode).send({
-        statusCode: error.statusCode,
+    res.status(statusCode).send({
+        statusCode,
         message: error.message
     });
 });

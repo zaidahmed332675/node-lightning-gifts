@@ -27,8 +27,7 @@ exports.createInvoice = ({ orderId, amount }) => {
             description
         });
     } catch (error) {
-        console.log(error);
-        Promise.reject(error);
+        throw error;
     }
 };
 
@@ -44,7 +43,7 @@ exports.getInvoiceStatus = chargeId => {
     try {
         return openNodeApi.get(`/charge/${chargeId}`);
     } catch (error) {
-        Promise.reject(error);
+        throw error;
     }
 };
 

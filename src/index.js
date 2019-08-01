@@ -19,7 +19,7 @@ const {
     giftWithdrawTry,
     giftWithdrawFail
 } = require('./models');
-const { getInvoiceAmount } = require('./utils');
+const { getInvoiceAmount, buildLNURL } = require('./utils');
 
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -53,15 +53,21 @@ app.post('/create', apiLimiter, (req, res, next) => {
         next(new Error('GIFT_AMOUNT_OVER_500K'));
     } else {
         createInvoice({ orderId, amount })
-          .then(response => {
-              const { id: chargeId, status, lightning_invoice, amount } = response.data.data;
-
-              res.json({ orderId, chargeId, status, lightning_invoice, amount });
-          })
-          .catch(error => {
-              console.log({ orderId, error });
-              next(error);
-          });
+            .then(response => {
+                const { id: chargeId, status, lightning_invoice, amount } = response.data.data;
+                res.json({
+                    orderId,
+                    chargeId,
+                    status,
+                    lightning_invoice,
+                    amount,
+                    lnurl: buildLNURL(orderId)
+                });
+            })
+            .catch(error => {
+                console.log({ orderId, error });
+                next(error);
+            });
     }
 });
 
@@ -93,7 +99,7 @@ app.get('/gift/:orderId', apiLimiter, (req, res, next) => {
     try {
         getCrateInfo(orderId).then(response => {
             if (response) {
-                res.json({ ...response, orderId });
+                res.json({ ...response, orderId, lnurl: buildLNURL(orderId) });
             } else {
                 res.status(404).send({
                     message: 'notFound'
@@ -150,6 +156,76 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
             next(error);
         });
 });
+
+app.get(
+    '/lnurl/:orderId',
+    apiLimiter,
+    (req, res, next) => {
+        const { orderId } = req.params;
+
+        const { pr } = req.query; // if this exists we will redeem the gift already
+        const invoiceAmount = pr ? getInvoiceAmount(pr) : null;
+
+        getCrateInfo(orderId)
+            .then(response => {
+                const { amount, spent } = response;
+
+                if (pr && invoiceAmount !== amount /* only checked when redeeming */) {
+                    res.statusCode = 400;
+                    next(new Error('BAD_INVOICE_AMOUNT'));
+                } else if (spent === 'pending') {
+                    res.statusCode = 400;
+                    next(new Error('GIFT_REDEEM_PENDING'));
+                } else if (spent) {
+                    res.statusCode = 400;
+                    next(new Error('GIFT_SPENT'));
+                } else if (pr) {
+                    redeemGift({ amount, invoice: pr })
+                        .then(response => {
+                            const { id: withdrawalId, reference } = response.data.data;
+
+                            try {
+                                giftWithdrawTry({
+                                    orderId,
+                                    withdrawalId,
+                                    reference
+                                });
+                            } catch (error) {
+                                next(error);
+                            }
+
+                            res.json({ status: 'OK' });
+                        })
+                        .catch(error => {
+                            next(error);
+                        });
+                } else {
+                    // return first lnurl response
+                    res.json({
+                        status: 'OK',
+                        callback: `${process.env.SERVICE_URL}/lnurl/${orderId}`,
+                        k1: orderId,
+                        maxWithdrawable: amount * 1000,
+                        minWithdrawable: amount * 1000,
+                        defaultDescription: `lightning.gifts redeem ${orderId}`,
+                        tag: 'withdrawRequest'
+                    });
+                }
+            })
+            .catch(error => {
+                next(error);
+            });
+    },
+    // lnurl error handling
+    (error, req, res, next) => {
+        const statusCode = _.defaultTo(_.defaultTo(error.statusCode, res.statusCode), 500);
+        console.log('lnurl error:', error.response);
+        res.status(statusCode).send({
+            status: 'ERROR',
+            reason: error.message
+        });
+    }
+);
 
 app.post('/redeemStatus/:withdrawalId', (req, res, next) => {
     const { withdrawalId } = req.params;

@@ -1,4 +1,5 @@
 // NPM Dependencies
+const bech32 = require('bech32');
 const _ = require('lodash');
 
 exports.getInvoiceAmount = invoice => {
@@ -36,3 +37,10 @@ exports.getInvoiceAmount = invoice => {
     const amountAsNumber = Number(invoiceAmount);
     return amountAsNumber;
 };
+
+exports.buildLNURL = orderId =>
+    bech32.encode(
+        'lnurl',
+        bech32.toWords(Buffer.from(`${process.env.SERVICE_URL}/lnurl/${orderId}`)),
+        1500
+    );

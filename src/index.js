@@ -3,6 +3,7 @@ const express = require('express');
 const cryptoRandomString = require('crypto-random-string');
 const rateLimit = require('express-rate-limit');
 const _ = require('lodash');
+const Sentry = require('@sentry/node');
 
 // Module Dependencies
 const {
@@ -27,6 +28,11 @@ const apiLimiter = rateLimit({
 });
 
 const app = express();
+
+if (process.env.NODE_ENV === 'production') {
+    Sentry.init({ dsn: process.env.SENTRY_KEY });
+    app.use(Sentry.Handlers.requestHandler());
+}
 
 app.use(function(req, res, next) {
     res.header('Access-Control-Allow-Origin', '*');
@@ -254,6 +260,10 @@ app.post('/redeemStatus/:withdrawalId', (req, res, next) => {
             next(new Error('WITHDRAWAL_FAILED'));
         });
 });
+
+if (process.env.NODE_ENV === 'production') {
+    app.use(Sentry.Handlers.errorHandler());
+}
 
 // error handling
 app.use((error, req, res, next) => {

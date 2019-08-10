@@ -52,28 +52,46 @@ app.get('/currency', (req, res) => {
 
 app.post('/create', apiLimiter, (req, res, next) => {
     const { amount } = req.body;
-    const orderId = cryptoRandomString({ length: 48 });
+    const order_id = cryptoRandomString({ length: 48 });
 
     if (Number(amount) > 500000) {
         res.statusCode = 400;
         next(new Error('GIFT_AMOUNT_OVER_500K'));
     } else {
-        createInvoice({ orderId, amount })
+        createInvoice({ order_id, amount })
             .then(response => {
                 const { id: chargeId, status, lightning_invoice, amount } = response.data.data;
                 res.json({
-                    orderId,
+                    order_id,
                     chargeId,
                     status,
                     lightning_invoice,
                     amount,
-                    lnurl: buildLNURL(orderId)
+                    lnurl: buildLNURL(order_id)
                 });
             })
             .catch(error => {
-                console.log({ orderId, error });
                 next(error);
             });
+    }
+});
+
+app.post('/webhooks/create', (req, res, next) => {
+    const {
+        id,
+        status,
+        order_id,
+        price
+    } = req.body;
+
+    if (status === 'paid') {
+        try {
+            createCrate({ order_id, chargeId: id, amount: price });
+        } catch (error) {
+            next(error);
+        }
+    } else {
+        next();
     }
 });
 
@@ -82,15 +100,7 @@ app.get('/status/:chargeId', (req, res, next) => {
 
     getInvoiceStatus(chargeId)
         .then(response => {
-            const { id: chargeId, status, order_id: orderId, amount } = response.data.data;
-
-            if (status === 'paid') {
-                try {
-                    createCrate({ orderId, chargeId, amount });
-                } catch (error) {
-                    next(error);
-                }
-            }
+            const { status } = response.data.data;
 
             res.json({ status });
         })
@@ -163,10 +173,7 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
         });
 });
 
-app.get(
-    '/lnurl/:orderId',
-    apiLimiter,
-    (req, res, next) => {
+app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
         const { orderId } = req.params;
 
         const { pr } = req.query; // if this exists we will redeem the gift already

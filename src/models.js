@@ -30,12 +30,12 @@ exports.getCrateInfo = orderId =>
             return null;
         });
 
-exports.createCrate = ({ orderId, chargeId, amount }) =>
+exports.createCrate = ({ order_id, chargeId, amount }) =>
     db
         .collection(giftDb)
-        .doc(orderId)
+        .doc(order_id)
         .set({
-            id: orderId,
+            id: order_id,
             amount,
             chargeId,
             spent: false,

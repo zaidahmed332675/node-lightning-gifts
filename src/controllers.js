@@ -36,7 +36,7 @@ exports.showCurrencies = () => {
     try {
         return openNodeApi.get('/currencies');
     } catch (error) {
-        console.log(error);
+        throw error;
     }
 };
 
@@ -53,7 +53,8 @@ exports.redeemGift = ({ amount, invoice }) => {
         return openNodeApiV2.post('/withdrawals', {
             type: 'ln',
             amount,
-            address: invoice
+            address: invoice,
+            callback_url: `${process.env.SERVICE_URL}/webhooks/redeem`
         });
     } catch (error) {
         throw error;

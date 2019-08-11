@@ -16,7 +16,7 @@ const {
 const {
     getCrateInfo,
     createCrate,
-    emptyCrate,
+    giftWithdrawSuccess,
     giftWithdrawTry,
     giftWithdrawFail
 } = require('./models');
@@ -54,7 +54,10 @@ app.post('/create', apiLimiter, (req, res, next) => {
     const { amount } = req.body;
     const order_id = cryptoRandomString({ length: 48 });
 
-    if (Number(amount) > 500000) {
+    if (Number(amount) < 100) {
+        res.statusCode = 400;
+        next(new Error('GIFT_AMOUNT_UNDER_100'));
+    } else if (Number(amount) > 500000) {
         res.statusCode = 400;
         next(new Error('GIFT_AMOUNT_OVER_500K'));
     } else {
@@ -242,30 +245,43 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
 
 app.post('/redeemStatus/:withdrawalId', (req, res, next) => {
     const { withdrawalId } = req.params;
-    const { orderId } = req.body;
+    // const { orderId } = req.body;
 
     checkRedeemStatus(withdrawalId)
         .then(response => {
             const { reference, status } = response.data.data;
 
-            if (status === 'confirmed') {
-                try {
-                    emptyCrate(orderId);
-                } catch (error) {
-                    next(error);
-                }
-            }
-
             res.json({ reference, status });
         })
         .catch(error => {
-            try {
-                giftWithdrawFail(orderId);
-            } catch (error) {
-                next(error);
-            }
             next(new Error('WITHDRAWAL_FAILED'));
         });
+});
+
+app.post('/webhooks/redeem', (req, res, next) => {
+    const {
+        status,
+        id: withdrawalId,
+        fee,
+        error
+    } = req.body;
+
+    if (status === 'confirmed') {
+        try {
+            giftWithdrawSuccess({ withdrawalId, fee });
+        } catch (error) {
+            next(error);
+        }
+    } else if (status === 'error') {
+        try {
+            giftWithdrawFail({ withdrawalId, error });
+        } catch (error) {
+            next(error);
+        }
+    } else {
+        next();
+    }
+
 });
 
 if (process.env.NODE_ENV === 'production') {

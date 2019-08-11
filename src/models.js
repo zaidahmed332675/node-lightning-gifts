@@ -13,9 +13,10 @@ const db = admin.firestore();
 
 const giftDb = process.env.NODE_ENV === 'production' ? 'prod-gifts' : 'dev-gifts';
 
+const dbRef = db.collection(giftDb);
+
 exports.getCrateInfo = orderId =>
-    db
-        .collection(giftDb)
+    dbRef
         .doc(orderId)
         .get()
         .then(doc => {
@@ -31,26 +32,18 @@ exports.getCrateInfo = orderId =>
         });
 
 exports.createCrate = ({ order_id, chargeId, amount }) =>
-    db
-        .collection(giftDb)
+    dbRef
         .doc(order_id)
         .set({
             id: order_id,
-            amount,
+            amount: Number(amount),
             chargeId,
             spent: false,
             createdAt: admin.firestore.Timestamp.now()
         });
 
-exports.emptyCrate = orderId =>
-    db
-        .collection(giftDb)
-        .doc(orderId)
-        .update({ spent: true });
-
-exports.giftWithdrawTry = ({ orderId, withdrawalId, reference, address }) =>
-    db
-        .collection(giftDb)
+exports.giftWithdrawTry = ({ orderId, withdrawalId, reference }) =>
+    dbRef
         .doc(orderId)
         .update({
             spent: 'pending',
@@ -61,8 +54,48 @@ exports.giftWithdrawTry = ({ orderId, withdrawalId, reference, address }) =>
             }
         });
 
-exports.giftWithdrawFail = orderId =>
-    db
-        .collection(giftDb)
-        .doc(orderId)
-        .update({ spent: false });
+exports.giftWithdrawSuccess = ({ withdrawalId, fee }) =>
+    dbRef
+        .where('withdrawalInfo.withdrawalId', '==', withdrawalId)
+        .get()
+        .then(snapshot => {
+            if (snapshot.empty) {
+                console.log('No matching withdrawalIds');
+                return null;
+            }
+
+            snapshot.forEach(doc => {
+                dbRef
+                    .doc(doc.id)
+                    .set({
+                        spent: true,
+                        withdrawalInfo: { fee }
+                    }, { merge: true });
+            });
+        })
+        .catch(error => {
+            throw error;
+        });
+
+exports.giftWithdrawFail = ({ withdrawalId, error }) =>
+    dbRef
+        .where('withdrawalInfo.withdrawalId', '==', withdrawalId)
+        .get()
+        .then(snapshot => {
+            if (snapshot.empty) {
+                console.log('No matching withdrawalIds');
+                return null;
+            }
+
+            snapshot.forEach(doc => {
+                dbRef
+                    .doc(doc.id)
+                    .set({
+                        spent: false,
+                        withdrawalInfo: { error }
+                    }, { merge: true });
+            });
+        })
+        .catch(error => {
+            throw error;
+        });

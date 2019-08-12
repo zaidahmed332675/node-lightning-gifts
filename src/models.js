@@ -10,12 +10,10 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
-
 const giftDb = process.env.NODE_ENV === 'production' ? 'prod-gifts' : 'dev-gifts';
-
 const dbRef = db.collection(giftDb);
 
-exports.getCrateInfo = orderId =>
+exports.getGiftInfo = orderId =>
     dbRef
         .doc(orderId)
         .get()
@@ -31,13 +29,16 @@ exports.getCrateInfo = orderId =>
             return null;
         });
 
-exports.createCrate = ({ order_id, chargeId, amount }) =>
+exports.createGift = ({ order_id, chargeId, amount, chargeInvoice }) =>
     dbRef
         .doc(order_id)
         .set({
             id: order_id,
             amount: Number(amount),
-            chargeId,
+            chargeInfo: {
+                chargeId,
+                chargeInvoice
+            },
             spent: false,
             createdAt: admin.firestore.Timestamp.now()
         });
@@ -49,7 +50,7 @@ exports.giftWithdrawTry = ({ orderId, withdrawalId, reference }) =>
             spent: 'pending',
             withdrawalInfo: {
                 withdrawalId,
-                reference,
+                withdrawalInvoice: reference,
                 createdAt: admin.firestore.Timestamp.now()
             }
         });

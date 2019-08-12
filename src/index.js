@@ -51,7 +51,7 @@ app.get('/currency', (req, res) => {
 });
 
 app.post('/create', apiLimiter, (req, res, next) => {
-    const { amount } = req.body;
+    const { amount, notify } = req.body;
     const order_id = cryptoRandomString({ length: 48 });
 
     if (Number(amount) < 100) {
@@ -61,7 +61,7 @@ app.post('/create', apiLimiter, (req, res, next) => {
         res.statusCode = 400;
         next(new Error('GIFT_AMOUNT_OVER_500K'));
     } else {
-        createInvoice({ order_id, amount })
+        createInvoice({ order_id, amount, notify })
             .then(response => {
                 const { id: chargeId, status, lightning_invoice, amount } = response.data.data;
                 res.json({
@@ -80,16 +80,14 @@ app.post('/create', apiLimiter, (req, res, next) => {
 });
 
 app.post('/webhooks/create', (req, res, next) => {
-    const {
-        id,
-        status,
-        order_id,
-        price
-    } = req.body;
+    const { id, status, order_id, price, description } = req.body;
+
+    const notifymatch = description.match(/\[(http[^\]]+)]/);
+    const notify = notifymatch ? notifymatch[1] : null;
 
     if (status === 'paid') {
         try {
-            createCrate({ order_id, chargeId: id, amount: price });
+            createCrate({ order_id, chargeId: id, amount: price, notify });
         } catch (error) {
             next(error);
         }
@@ -176,7 +174,10 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
         });
 });
 
-app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
+app.get(
+    '/lnurl/:orderId',
+    apiLimiter,
+    (req, res, next) => {
         const { orderId } = req.params;
 
         const { pr } = req.query; // if this exists we will redeem the gift already
@@ -259,12 +260,7 @@ app.post('/redeemStatus/:withdrawalId', (req, res, next) => {
 });
 
 app.post('/webhooks/redeem', (req, res, next) => {
-    const {
-        status,
-        id: withdrawalId,
-        fee,
-        error
-    } = req.body;
+    const { status, id: withdrawalId, fee, error } = req.body;
 
     if (status === 'confirmed') {
         try {
@@ -281,7 +277,6 @@ app.post('/webhooks/redeem', (req, res, next) => {
     } else {
         next();
     }
-
 });
 
 if (process.env.NODE_ENV === 'production') {

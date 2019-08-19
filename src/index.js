@@ -80,7 +80,13 @@ app.post('/create', apiLimiter, (req, res, next) => {
 });
 
 app.post('/webhooks/create', (req, res, next) => {
-    const { id, status, order_id, price, description } = req.body;
+    const {
+        id,
+        status,
+        order_id,
+        price,
+        description
+    } = req.body;
 
     const notifymatch = description.match(/\[(http[^\]]+)]/);
     const notify = notifymatch ? notifymatch[1] : null;
@@ -174,10 +180,7 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
         });
 });
 
-app.get(
-    '/lnurl/:orderId',
-    apiLimiter,
-    (req, res, next) => {
+app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
         const { orderId } = req.params;
 
         const { pr } = req.query; // if this exists we will redeem the gift already
@@ -260,7 +263,12 @@ app.post('/redeemStatus/:withdrawalId', (req, res, next) => {
 });
 
 app.post('/webhooks/redeem', (req, res, next) => {
-    const { status, id: withdrawalId, fee, error } = req.body;
+    const {
+        status,
+        id: withdrawalId,
+        fee,
+        error
+    } = req.body;
 
     if (status === 'confirmed') {
         try {
@@ -277,6 +285,7 @@ app.post('/webhooks/redeem', (req, res, next) => {
     } else {
         next();
     }
+
 });
 
 if (process.env.NODE_ENV === 'production') {

@@ -34,25 +34,29 @@ exports.getCrateInfo = orderId =>
             return null;
         });
 
-exports.createCrate = ({ order_id, chargeId, amount, notify }) =>
-    dbRef.doc(order_id).set({
-        id: order_id,
-        amount: Number(amount),
-        chargeId,
-        spent: false,
-        createdAt: admin.firestore.Timestamp.now(),
-        notify
-    });
+exports.createCrate = ({ order_id, chargeId, amount }) =>
+    dbRef
+        .doc(order_id)
+        .set({
+            id: order_id,
+            amount: Number(amount),
+            chargeId,
+            spent: false,
+            createdAt: admin.firestore.Timestamp.now(),
+            notify
+        });
 
 exports.giftWithdrawTry = ({ orderId, withdrawalId, reference }) =>
-    dbRef.doc(orderId).update({
-        spent: 'pending',
-        withdrawalInfo: {
-            withdrawalId,
-            reference,
-            createdAt: admin.firestore.Timestamp.now()
-        }
-    });
+    dbRef
+        .doc(orderId)
+        .update({
+            spent: 'pending',
+            withdrawalInfo: {
+                withdrawalId,
+                reference,
+                createdAt: admin.firestore.Timestamp.now()
+            }
+        });
 
 exports.giftWithdrawSuccess = ({ withdrawalId, fee }) =>
     dbRef
@@ -65,13 +69,12 @@ exports.giftWithdrawSuccess = ({ withdrawalId, fee }) =>
             }
 
             snapshot.forEach(doc => {
-                dbRef.doc(doc.id).set(
-                    {
+                dbRef
+                    .doc(doc.id)
+                    .set({
                         spent: true,
                         withdrawalInfo: { fee }
-                    },
-                    { merge: true }
-                );
+                    }, { merge: true });
 
                 notifyRedeem(doc.data);
             });
@@ -91,13 +94,12 @@ exports.giftWithdrawFail = ({ withdrawalId, error }) =>
             }
 
             snapshot.forEach(doc => {
-                dbRef.doc(doc.id).set(
-                    {
+                dbRef
+                    .doc(doc.id)
+                    .set({
                         spent: false,
                         withdrawalInfo: { error }
-                    },
-                    { merge: true }
-                );
+                    }, { merge: true });
             });
         })
         .catch(error => {

@@ -63,10 +63,11 @@ app.post('/create', apiLimiter, (req, res, next) => {
     } else {
         createInvoice({ order_id, amount, notify })
             .then(response => {
-                const { id: chargeId, status, lightning_invoice, amount } = response.data.data;
+                const { id: charge_id, status, lightning_invoice, amount } = response.data.data;
                 res.json({
                     order_id,
-                    chargeId,
+                    chargeId: charge_id,
+                    charge_id,
                     status,
                     lightning_invoice,
                     amount,
@@ -81,7 +82,7 @@ app.post('/create', apiLimiter, (req, res, next) => {
 
 app.post('/webhooks/create', (req, res, next) => {
     const {
-        id: chargeId,
+        id: charge_id,
         status,
         order_id,
         price,
@@ -92,17 +93,16 @@ app.post('/webhooks/create', (req, res, next) => {
     const notify = notifymatch ? notifymatch[1] : null;
 
     if (status === 'paid') {
-        getInvoiceStatus(chargeId)
+        getInvoiceStatus(charge_id)
             .then(response => {
                 const { lightning_invoice } = response.data.data;
 
                 try {
                     createGift({
                       order_id,
-                      chargeId,
+                      chargeId: charge_id,
                       amount: price,
-                      chargeInvoice:
-                      lightning_invoice.payreq,
+                      chargeInvoice: lightning_invoice.payreq,
                       notify
                     });
                 } catch (error) {

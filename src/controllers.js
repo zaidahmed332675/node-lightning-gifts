@@ -40,9 +40,9 @@ exports.showCurrencies = () => {
     }
 };
 
-exports.getInvoiceStatus = chargeId => {
+exports.getInvoiceStatus = charge_id => {
     try {
-        return openNodeApi.get(`/charge/${chargeId}`);
+        return openNodeApi.get(`/charge/${charge_id}`);
     } catch (error) {
         throw error;
     }

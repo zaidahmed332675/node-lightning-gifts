@@ -51,7 +51,7 @@ app.get('/currency', (req, res) => {
 });
 
 app.post('/create', apiLimiter, (req, res, next) => {
-    const { amount, notify } = req.body;
+    const { amount, notify = null } = req.body;
     const order_id = cryptoRandomString({ length: 48 });
 
     if (Number(amount) < 100) {
@@ -97,13 +97,13 @@ app.post('/webhooks/create', (req, res, next) => {
                 const { lightning_invoice } = response.data.data;
 
                 try {
-                    createGift({ 
-                      order_id, 
-                      chargeId, 
-                      amount: price, 
-                      chargeInvoice: 
-                      lightning_invoice.payreq, 
-                      notify 
+                    createGift({
+                      order_id,
+                      chargeId,
+                      amount: price,
+                      chargeInvoice:
+                      lightning_invoice.payreq,
+                      notify
                     });
                 } catch (error) {
                     next(error);

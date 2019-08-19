@@ -32,7 +32,7 @@ exports.getGiftInfo = orderId =>
             return null;
         });
 
-exports.createGift = ({ order_id, chargeId, amount, chargeInvoice }) =>
+exports.createGift = ({ order_id, chargeId, amount, chargeInvoice, notify }) =>
     dbRef
         .doc(order_id)
         .set({

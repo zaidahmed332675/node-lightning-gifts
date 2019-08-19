@@ -73,5 +73,9 @@ exports.notifyRedeem = data => {
     if (!data.notify) {
         return;
     }
-    axios.post(data.notify, { id: data.id, amount: data.amount, spent: true }, { timeout: 2000 });
+    try {
+        axios.post(data.notify, { id: data.id, amount: data.amount, spent: true }, { timeout: 2000 });
+    } catch (error) {
+        throw error;
+    }
 };

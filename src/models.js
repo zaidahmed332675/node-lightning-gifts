@@ -1,6 +1,9 @@
 // NPM Dependencies
 const admin = require('firebase-admin');
 
+// Module Dependencies
+const { notifyRedeem } = require('./controllers');
+
 admin.initializeApp({
     credential: admin.credential.cert({
         projectId: process.env.FIREBASE_ID,
@@ -40,7 +43,8 @@ exports.createGift = ({ order_id, chargeId, amount, chargeInvoice }) =>
                 chargeInvoice
             },
             spent: false,
-            createdAt: admin.firestore.Timestamp.now()
+            createdAt: admin.firestore.Timestamp.now(),
+            notify
         });
 
 exports.giftWithdrawTry = ({ orderId, withdrawalId, reference }) =>
@@ -72,6 +76,8 @@ exports.giftWithdrawSuccess = ({ withdrawalId, fee }) =>
                         spent: true,
                         withdrawalInfo: { fee }
                     }, { merge: true });
+
+                notifyRedeem(doc.data);
             });
         })
         .catch(error => {

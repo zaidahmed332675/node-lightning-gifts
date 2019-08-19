@@ -17,9 +17,9 @@ const openNodeApiV2 = axios.create({
     }
 });
 
-exports.createInvoice = ({ order_id, amount }) => {
+exports.createInvoice = ({ order_id, amount, notify }) => {
     try {
-        const description = `Lightning gift for ${amount} sats`;
+        const description = `Lightning gift for ${amount} sats` + (notify ? ` [${notify}]` : '');
 
         return openNodeApi.post('/charges', {
             order_id,
@@ -67,4 +67,11 @@ exports.checkRedeemStatus = withdrawalId => {
     } catch (error) {
         throw error;
     }
+};
+
+exports.notifyRedeem = data => {
+    if (!data.notify) {
+        return;
+    }
+    axios.post(data.notify, { id: data.id, amount: data.amount, spent: true }, { timeout: 2000 });
 };

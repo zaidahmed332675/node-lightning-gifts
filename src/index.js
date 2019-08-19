@@ -51,7 +51,7 @@ app.get('/currency', (req, res) => {
 });
 
 app.post('/create', apiLimiter, (req, res, next) => {
-    const { amount } = req.body;
+    const { amount, notify } = req.body;
     const order_id = cryptoRandomString({ length: 48 });
 
     if (Number(amount) < 100) {
@@ -61,7 +61,7 @@ app.post('/create', apiLimiter, (req, res, next) => {
         res.statusCode = 400;
         next(new Error('GIFT_AMOUNT_OVER_500K'));
     } else {
-        createInvoice({ order_id, amount })
+        createInvoice({ order_id, amount, notify })
             .then(response => {
                 const { id: chargeId, status, lightning_invoice, amount } = response.data.data;
                 res.json({
@@ -84,8 +84,12 @@ app.post('/webhooks/create', (req, res, next) => {
         id: chargeId,
         status,
         order_id,
-        price
+        price,
+        description
     } = req.body;
+
+    const notifymatch = description.match(/\[(http[^\]]+)]/);
+    const notify = notifymatch ? notifymatch[1] : null;
 
     if (status === 'paid') {
         getInvoiceStatus(chargeId)
@@ -93,7 +97,14 @@ app.post('/webhooks/create', (req, res, next) => {
                 const { lightning_invoice } = response.data.data;
 
                 try {
-                    createGift({ order_id, chargeId, amount: price, chargeInvoice: lightning_invoice.payreq });
+                    createGift({ 
+                      order_id, 
+                      chargeId, 
+                      amount: price, 
+                      chargeInvoice: 
+                      lightning_invoice.payreq, 
+                      notify 
+                    });
                 } catch (error) {
                     next(error);
                 }

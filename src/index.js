@@ -14,8 +14,8 @@ const {
     checkRedeemStatus
 } = require('./controllers');
 const {
-    getCrateInfo,
-    createCrate,
+    getGiftInfo,
+    createGift,
     giftWithdrawSuccess,
     giftWithdrawTry,
     giftWithdrawFail
@@ -81,7 +81,7 @@ app.post('/create', apiLimiter, (req, res, next) => {
 
 app.post('/webhooks/create', (req, res, next) => {
     const {
-        id,
+        id: chargeId,
         status,
         order_id,
         price,
@@ -92,11 +92,26 @@ app.post('/webhooks/create', (req, res, next) => {
     const notify = notifymatch ? notifymatch[1] : null;
 
     if (status === 'paid') {
-        try {
-            createCrate({ order_id, chargeId: id, amount: price, notify });
-        } catch (error) {
-            next(error);
-        }
+        getInvoiceStatus(chargeId)
+            .then(response => {
+                const { lightning_invoice } = response.data.data;
+
+                try {
+                    createGift({ 
+                      order_id, 
+                      chargeId, 
+                      amount: price, 
+                      chargeInvoice: 
+                      lightning_invoice.payreq, 
+                      notify 
+                    });
+                } catch (error) {
+                    next(error);
+                }
+            })
+            .catch(error => {
+                next(error);
+            });
     } else {
         next();
     }
@@ -120,7 +135,7 @@ app.get('/gift/:orderId', apiLimiter, (req, res, next) => {
     const { orderId } = req.params;
 
     try {
-        getCrateInfo(orderId).then(response => {
+        getGiftInfo(orderId).then(response => {
             if (response) {
                 res.json({ ...response, orderId, lnurl: buildLNURL(orderId) });
             } else {
@@ -140,7 +155,7 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
 
     const invoiceAmount = getInvoiceAmount(invoice);
 
-    getCrateInfo(orderId)
+    getGiftInfo(orderId)
         .then(response => {
             const { amount, spent } = response;
 
@@ -186,7 +201,7 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
         const { pr } = req.query; // if this exists we will redeem the gift already
         const invoiceAmount = pr ? getInvoiceAmount(pr) : null;
 
-        getCrateInfo(orderId)
+        getGiftInfo(orderId)
             .then(response => {
                 const { amount, spent } = response;
 

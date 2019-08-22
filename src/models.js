@@ -28,7 +28,6 @@ exports.getGiftInfo = orderId =>
             }
         })
         .catch(err => {
-            console.log('Error getting gift', err);
             return null;
         });
 

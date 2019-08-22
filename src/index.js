@@ -160,6 +160,11 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
 
     getGiftInfo(orderId)
         .then(response => {
+            if (!response) {
+                res.statusCode = 400;
+                next(new Error('GIFT_NOT_FOUND'));
+            }
+
             const { amount, spent } = response;
 
             if (invoiceAmount !== amount) {
@@ -206,6 +211,11 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
 
         getGiftInfo(orderId)
             .then(response => {
+                if (!response) {
+                    res.statusCode = 400;
+                    next(new Error('GIFT_NOT_FOUND'));
+                }
+
                 const { amount, spent } = response;
 
                 if (pr && invoiceAmount !== amount /* only checked when redeeming */) {

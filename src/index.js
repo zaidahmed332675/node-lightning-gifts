@@ -54,10 +54,13 @@ app.post('/create', apiLimiter, (req, res, next) => {
     const { amount, notify = null } = req.body;
     const order_id = cryptoRandomString({ length: 48 });
 
-    if (Number(amount) < 100) {
+    if (!Number.isInteger(amount)) {
+        res.statusCode = 400;
+        next(new Error('GIFT_AMOUNT_NOT_WHOLE_NUMBER'));
+    } else if (amount < 100) {
         res.statusCode = 400;
         next(new Error('GIFT_AMOUNT_UNDER_100'));
-    } else if (Number(amount) > 500000) {
+    } else if (amount > 500000) {
         res.statusCode = 400;
         next(new Error('GIFT_AMOUNT_OVER_500K'));
     } else {

@@ -76,7 +76,7 @@ exports.giftWithdrawSuccess = ({ withdrawalId, fee }) =>
                         withdrawalInfo: { fee }
                     }, { merge: true });
 
-                notifyRedeem(doc.data);
+                notifyRedeem(doc.data());
             });
         })
         .catch(error => {

@@ -1,6 +1,6 @@
 {
     "name": "node-lightning-in-a-box",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "description": "Express server for Lightning Gifts functions",
     "main": "src/index.js",
     "scripts": {

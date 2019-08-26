@@ -52,7 +52,7 @@ app.get('/currency', (req, res) => {
 
 app.post('/create', apiLimiter, (req, res, next) => {
     const { amount, notify = null } = req.body;
-    const order_id = cryptoRandomString({ length: 48 });
+    const orderId = cryptoRandomString({ length: 48 });
 
     if (!Number.isInteger(amount)) {
         res.statusCode = 400;
@@ -64,17 +64,16 @@ app.post('/create', apiLimiter, (req, res, next) => {
         res.statusCode = 400;
         next(new Error('GIFT_AMOUNT_OVER_500K'));
     } else {
-        createInvoice({ order_id, amount, notify })
+        createInvoice({ orderId, amount, notify })
             .then(response => {
-                const { id: charge_id, status, lightning_invoice, amount } = response.data.data;
+                const { id: chargeId, status, lightning_invoice: lightningInvoice, amount } = response.data.data;
                 res.json({
-                    order_id,
-                    chargeId: charge_id,
-                    charge_id,
+                    orderId,
+                    chargeId,
                     status,
-                    lightning_invoice,
+                    lightningInvoice,
                     amount,
-                    lnurl: buildLNURL(order_id)
+                    lnurl: buildLNURL(orderId)
                 });
             })
             .catch(error => {
@@ -85,9 +84,9 @@ app.post('/create', apiLimiter, (req, res, next) => {
 
 app.post('/webhooks/create', (req, res, next) => {
     const {
-        id: charge_id,
+        id: chargeId,
         status,
-        order_id,
+        order_id: orderId,
         price,
         description
     } = req.body;
@@ -96,18 +95,20 @@ app.post('/webhooks/create', (req, res, next) => {
     const notify = notifymatch ? notifymatch[1] : null;
 
     if (status === 'paid') {
-        getInvoiceStatus(charge_id)
+        getInvoiceStatus(chargeId)
             .then(response => {
                 const { lightning_invoice } = response.data.data;
 
                 try {
                     createGift({
-                      order_id,
-                      chargeId: charge_id,
-                      amount: price,
-                      chargeInvoice: lightning_invoice.payreq,
-                      notify
+                        orderId,
+                        chargeId: chargeId,
+                        amount: price,
+                        chargeInvoice: lightning_invoice.payreq,
+                        notify
                     });
+
+                    res.sendStatus(200)
                 } catch (error) {
                     next(error);
                 }
@@ -116,7 +117,7 @@ app.post('/webhooks/create', (req, res, next) => {
                 next(error);
             });
     } else {
-        next();
+        res.sendStatus(200)
     }
 });
 
@@ -301,12 +302,16 @@ app.post('/webhooks/redeem', (req, res, next) => {
     if (status === 'confirmed') {
         try {
             giftWithdrawSuccess({ withdrawalId, fee });
+
+            res.sendStatus(200)
         } catch (error) {
             next(error);
         }
     } else if (status === 'error') {
         try {
             giftWithdrawFail({ withdrawalId, error });
+
+            res.sendStatus(200)
         } catch (error) {
             next(error);
         }

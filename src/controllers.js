@@ -17,12 +17,12 @@ const openNodeApiV2 = axios.create({
     }
 });
 
-exports.createInvoice = ({ order_id, amount, notify }) => {
+exports.createInvoice = ({ orderId, amount, notify }) => {
     try {
         const description = `Lightning gift for ${amount} sats` + (notify ? ` [${notify}]` : '');
 
         return openNodeApi.post('/charges', {
-            order_id,
+            order_id: orderId,
             amount,
             description,
             callback_url: `${process.env.SERVICE_URL}/webhooks/create`
@@ -40,9 +40,9 @@ exports.showCurrencies = () => {
     }
 };
 
-exports.getInvoiceStatus = charge_id => {
+exports.getInvoiceStatus = chargeId => {
     try {
-        return openNodeApi.get(`/charge/${charge_id}`);
+        return openNodeApi.get(`/charge/${chargeId}`);
     } catch (error) {
         throw error;
     }

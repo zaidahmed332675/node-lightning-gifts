@@ -140,7 +140,7 @@ app.get('/gift/:orderId', apiLimiter, (req, res, next) => {
 
     try {
         getGiftInfo(orderId).then(response => {
-            if (response) {
+            if (!_.isNil(response)) {
                 res.json({ ...response, orderId, lnurl: buildLNURL(orderId) });
             } else {
                 res.status(404).send({
@@ -161,8 +161,8 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
 
     getGiftInfo(orderId)
         .then(response => {
-            if (!response) {
-                res.statusCode = 400;
+            if (_.isNil(response)) {
+                res.statusCode = 404;
                 next(new Error('GIFT_NOT_FOUND'));
             }
 
@@ -212,8 +212,8 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
 
         getGiftInfo(orderId)
             .then(response => {
-                if (!response) {
-                    res.statusCode = 400;
+                if (_.isNil(response)) {
+                    res.statusCode = 404;
                     next(new Error('GIFT_NOT_FOUND'));
                 }
 

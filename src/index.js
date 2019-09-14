@@ -154,72 +154,19 @@ app.get('/gift/:orderId', apiLimiter, (req, res, next) => {
 });
 
 app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
-    const { invoice } = req.body;
     const { orderId } = req.params;
-
-    const invoiceAmount = getInvoiceAmount(invoice);
 
     getGiftInfo(orderId)
         .then(response => {
             if (_.isNil(response)) {
                 res.statusCode = 404;
                 next(new Error('GIFT_NOT_FOUND'));
-            }
-
-            const { amount, spent } = response;
-
-            if (invoiceAmount !== amount) {
-                res.statusCode = 400;
-                next(new Error('BAD_INVOICE_AMOUNT'));
-            } else if (spent === 'pending') {
-                res.statusCode = 400;
-                next(new Error('GIFT_REDEEM_PENDING'));
-            } else if (spent) {
-                res.statusCode = 400;
-                next(new Error('GIFT_SPENT'));
             } else {
-                redeemGift({ amount, invoice })
-                    .then(response => {
-                        const { id: withdrawalId, reference } = response.data.data;
-
-                        try {
-                            giftWithdrawTry({
-                                orderId,
-                                withdrawalId,
-                                reference
-                            });
-                        } catch (error) {
-                            next(error);
-                        }
-
-                        res.json({ withdrawalId });
-                    })
-                    .catch(error => {
-                        next(error);
-                    });
-            }
-        })
-        .catch(error => {
-            next(error);
-        });
-});
-
-app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
-        const { orderId } = req.params;
-
-        const { pr } = req.query; // if this exists we will redeem the gift already
-        const invoiceAmount = pr ? getInvoiceAmount(pr) : null;
-
-        getGiftInfo(orderId)
-            .then(response => {
-                if (_.isNil(response)) {
-                    res.statusCode = 404;
-                    next(new Error('GIFT_NOT_FOUND'));
-                }
-
                 const { amount, spent } = response;
+                const { invoice } = req.body;
+                const invoiceAmount = getInvoiceAmount(invoice);
 
-                if (pr && invoiceAmount !== amount /* only checked when redeeming */) {
+                if (invoiceAmount !== amount) {
                     res.statusCode = 400;
                     next(new Error('BAD_INVOICE_AMOUNT'));
                 } else if (spent === 'pending') {
@@ -228,8 +175,8 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
                 } else if (spent) {
                     res.statusCode = 400;
                     next(new Error('GIFT_SPENT'));
-                } else if (pr) {
-                    redeemGift({ amount, invoice: pr })
+                } else {
+                    redeemGift({ amount, invoice })
                         .then(response => {
                             const { id: withdrawalId, reference } = response.data.data;
 
@@ -243,22 +190,73 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
                                 next(error);
                             }
 
-                            res.json({ status: 'OK' });
+                            res.json({ withdrawalId });
                         })
                         .catch(error => {
                             next(error);
                         });
+                }
+            }
+        })
+        .catch(error => {
+            next(error);
+        });
+});
+
+app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
+        const { orderId } = req.params;
+
+        getGiftInfo(orderId)
+            .then(response => {
+                if (_.isNil(response)) {
+                    res.statusCode = 404;
+                    next(new Error('GIFT_NOT_FOUND'));
                 } else {
-                    // return first lnurl response
-                    res.json({
-                        status: 'OK',
-                        callback: `${process.env.SERVICE_URL}/lnurl/${orderId}`,
-                        k1: orderId,
-                        maxWithdrawable: amount * 1000,
-                        minWithdrawable: amount * 1000,
-                        defaultDescription: `lightning.gifts redeem ${orderId}`,
-                        tag: 'withdrawRequest'
-                    });
+                    const { amount, spent } = response;
+                    const { pr } = req.query; // if this exists we will redeem the gift already
+                    const invoiceAmount = pr ? getInvoiceAmount(pr) : null;
+
+                    if (pr && invoiceAmount !== amount /* only checked when redeeming */) {
+                        res.statusCode = 400;
+                        next(new Error('BAD_INVOICE_AMOUNT'));
+                    } else if (spent === 'pending') {
+                        res.statusCode = 400;
+                        next(new Error('GIFT_REDEEM_PENDING'));
+                    } else if (spent) {
+                        res.statusCode = 400;
+                        next(new Error('GIFT_SPENT'));
+                    } else if (pr) {
+                        redeemGift({ amount, invoice: pr })
+                            .then(response => {
+                                const { id: withdrawalId, reference } = response.data.data;
+
+                                try {
+                                    giftWithdrawTry({
+                                        orderId,
+                                        withdrawalId,
+                                        reference
+                                    });
+                                } catch (error) {
+                                    next(error);
+                                }
+
+                                res.json({ status: 'OK' });
+                            })
+                            .catch(error => {
+                                next(error);
+                            });
+                    } else {
+                        // return first lnurl response
+                        res.json({
+                            status: 'OK',
+                            callback: `${process.env.SERVICE_URL}/lnurl/${orderId}`,
+                            k1: orderId,
+                            maxWithdrawable: amount * 1000,
+                            minWithdrawable: amount * 1000,
+                            defaultDescription: `lightning.gifts redeem ${orderId}`,
+                            tag: 'withdrawRequest'
+                        });
+                    }
                 }
             })
             .catch(error => {
@@ -293,10 +291,7 @@ app.post('/redeemStatus/:withdrawalId', (req, res, next) => {
 
 app.post('/webhooks/redeem', (req, res, next) => {
     const {
-        status,
-        id: withdrawalId,
-        fee,
-        error
+        status, id: withdrawalId, fee, error
     } = req.body;
 
     if (status === 'confirmed') {
@@ -307,7 +302,7 @@ app.post('/webhooks/redeem', (req, res, next) => {
         } catch (error) {
             next(error);
         }
-    } else if (status === 'error') {
+    } else if (_.includes(['error', 'failed'], status)) {
         try {
             giftWithdrawFail({ withdrawalId, error });
 

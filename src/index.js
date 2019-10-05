@@ -78,17 +78,18 @@ app.post('/create', apiLimiter, (req, res, next) => {
                         notify,
                         senderName,
                         senderMessage,
-                    });
-                    res.json({
-                        orderId,
-                        chargeId,
-                        status,
-                        lightningInvoice,
-                        amount,
-                        lnurl: buildLNURL(orderId),
-                        senderName,
-                        senderMessage,
-                    });
+                    }).then(gift =>
+                        res.json({
+                            orderId,
+                            chargeId,
+                            status,
+                            lightningInvoice,
+                            amount,
+                            lnurl: buildLNURL(orderId),
+                            senderName,
+                            senderMessage,
+                        })
+                    );
                 } catch (error) {
                     next(error);
                 }

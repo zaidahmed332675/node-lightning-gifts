@@ -52,7 +52,7 @@ app.get('/currency', (req, res) => {
 });
 
 app.post('/create', apiLimiter, (req, res, next) => {
-    const { amount, senderName, senderMessage, notify = null } = req.body;
+    const { amount, senderName = null, senderMessage = null, notify = null } = req.body;
     const orderId = cryptoRandomString({ length: 48 });
 
     if (!Number.isInteger(amount)) {

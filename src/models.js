@@ -31,7 +31,7 @@ exports.getGiftInfo = orderId =>
             return null;
         });
 
-exports.createGift = ({ orderId, chargeId, amount, chargeInvoice, notify }) =>
+exports.createGift = ({ orderId, chargeId, amount, chargeInvoice, chargeStatus, notify, senderName, senderMessage }) =>
     dbRef
         .doc(orderId)
         .set({
@@ -42,9 +42,17 @@ exports.createGift = ({ orderId, chargeId, amount, chargeInvoice, notify }) =>
                 chargeInvoice
             },
             spent: false,
+            chargeStatus,
             createdAt: admin.firestore.Timestamp.now(),
+            senderName,
+            senderMessage,
             notify
         });
+
+exports.updateGiftChargeStatus = ({ orderId, chargeStatus }) =>
+    dbRef
+        .doc(orderId)
+        .update({ chargeStatus });
 
 exports.giftWithdrawTry = ({ orderId, withdrawalId, reference }) =>
     dbRef

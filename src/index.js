@@ -18,7 +18,8 @@ const {
     createGift,
     giftWithdrawSuccess,
     giftWithdrawTry,
-    giftWithdrawFail
+    giftWithdrawFail,
+    updateGiftChargeStatus
 } = require('./models');
 const { getInvoiceAmount, buildLNURL } = require('./utils');
 
@@ -51,7 +52,7 @@ app.get('/currency', (req, res) => {
 });
 
 app.post('/create', apiLimiter, (req, res, next) => {
-    const { amount, notify = null } = req.body;
+    const { amount, senderName = null, senderMessage = null, notify = null } = req.body;
     const orderId = cryptoRandomString({ length: 48 });
 
     if (!Number.isInteger(amount)) {
@@ -66,15 +67,32 @@ app.post('/create', apiLimiter, (req, res, next) => {
     } else {
         createInvoice({ orderId, amount, notify })
             .then(response => {
-                const { id: chargeId, status, lightning_invoice: lightningInvoice, amount } = response.data.data;
-                res.json({
-                    orderId,
-                    chargeId,
-                    status,
-                    lightningInvoice,
-                    amount,
-                    lnurl: buildLNURL(orderId)
-                });
+                const { id: chargeId, order_id: orderId, status, lightning_invoice: lightningInvoice, amount } = response.data.data;
+                try {
+                    createGift({
+                        orderId,
+                        amount,
+                        chargeId,
+                        chargeStatus: status,
+                        chargeInvoice: lightningInvoice.payreq,
+                        notify,
+                        senderName,
+                        senderMessage,
+                    }).then(gift =>
+                        res.json({
+                            orderId,
+                            chargeId,
+                            status,
+                            lightningInvoice,
+                            amount,
+                            lnurl: buildLNURL(orderId),
+                            senderName,
+                            senderMessage,
+                        })
+                    );
+                } catch (error) {
+                    next(error);
+                }
             })
             .catch(error => {
                 next(error);
@@ -83,31 +101,14 @@ app.post('/create', apiLimiter, (req, res, next) => {
 });
 
 app.post('/webhooks/create', (req, res, next) => {
-    const {
-        id: chargeId,
-        status,
-        order_id: orderId,
-        price,
-        description
-    } = req.body;
-
-    const notifymatch = description.match(/\[(http[^\]]+)]/);
-    const notify = notifymatch ? notifymatch[1] : null;
+    const { id: chargeId, status, order_id: orderId } = req.body;
 
     if (status === 'paid') {
         getInvoiceStatus(chargeId)
             .then(response => {
-                const { lightning_invoice } = response.data.data;
-
+                const { status: chargeStatus } = response.data.data;
                 try {
-                    createGift({
-                        orderId,
-                        chargeId: chargeId,
-                        amount: price,
-                        chargeInvoice: lightning_invoice.payreq,
-                        notify
-                    });
-
+                    updateGiftChargeStatus({ orderId, chargeStatus });
                     res.sendStatus(200)
                 } catch (error) {
                     next(error);
@@ -162,7 +163,7 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
                 res.statusCode = 404;
                 next(new Error('GIFT_NOT_FOUND'));
             } else {
-                const { amount, spent } = response;
+                const { amount, spent, chargeStatus } = response;
                 const { invoice } = req.body;
                 const invoiceAmount = getInvoiceAmount(invoice);
 
@@ -175,6 +176,9 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
                 } else if (spent) {
                     res.statusCode = 400;
                     next(new Error('GIFT_SPENT'));
+                } else if (chargeStatus !== 'paid') {
+                    res.statusCode = 400;
+                    next(new Error('GIFT_INVOICE_UNPAID'));
                 } else {
                     redeemGift({ amount, invoice })
                         .then(response => {
@@ -212,7 +216,7 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
                     res.statusCode = 404;
                     next(new Error('GIFT_NOT_FOUND'));
                 } else {
-                    const { amount, spent } = response;
+                    const { amount, spent, chargeStatus } = response;
                     const { pr } = req.query; // if this exists we will redeem the gift already
                     const invoiceAmount = pr ? getInvoiceAmount(pr) : null;
 
@@ -225,6 +229,9 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
                     } else if (spent) {
                         res.statusCode = 400;
                         next(new Error('GIFT_SPENT'));
+                    } else if (chargeStatus !== 'paid') {
+                        res.statusCode = 400;
+                        next(new Error('GIFT_INVOICE_UNPAID'));
                     } else if (pr) {
                         redeemGift({ amount, invoice: pr })
                             .then(response => {

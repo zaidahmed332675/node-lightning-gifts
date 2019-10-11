@@ -28,6 +28,11 @@ const apiLimiter = rateLimit({
     max: 50
 });
 
+const checkLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 200
+});
+
 const app = express();
 
 if (process.env.NODE_ENV === 'production') {
@@ -122,7 +127,7 @@ app.post('/webhooks/create', (req, res, next) => {
     }
 });
 
-app.get('/status/:chargeId', (req, res, next) => {
+app.get('/status/:chargeId', checkLimiter, (req, res, next) => {
     const { chargeId } = req.params;
 
     getInvoiceStatus(chargeId)
@@ -136,7 +141,7 @@ app.get('/status/:chargeId', (req, res, next) => {
         });
 });
 
-app.get('/gift/:orderId', apiLimiter, (req, res, next) => {
+app.get('/gift/:orderId', checkLimiter, (req, res, next) => {
     const { orderId } = req.params;
 
     try {
@@ -281,7 +286,7 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
     }
 );
 
-app.post('/redeemStatus/:withdrawalId', (req, res, next) => {
+app.post('/redeemStatus/:withdrawalId', checkLimiter, (req, res, next) => {
     const { withdrawalId } = req.params;
     // const { orderId } = req.body;
 

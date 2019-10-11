@@ -5,7 +5,9 @@
     "main": "src/index.js",
     "scripts": {
         "dev": "nodemon -r dotenv/config src/index.js",
-        "start": "node src/index.js"
+        "start": "node src/index.js",
+        "migrate:prod": "export GOOGLE_APPLICATION_CREDENTIALS=\"/Users/ross/Downloads/devScrap/lightning-in-a-box-76d012f538ff.json\" fireway migrate --projectId=lightning-in-a-box",
+        "migrate:dev": "export GOOGLE_APPLICATION_CREDENTIALS=\"/Users/ross/Downloads/devScrap/lightning-gifts-develop-b816b68b86fe.json\" fireway migrate --projectId=lightning-gifts-develop"
     },
     "dependencies": {
         "@google-cloud/firestore": "~2.2.4",

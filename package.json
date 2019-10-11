@@ -1,6 +1,6 @@
 {
     "name": "node-lightning-gifts",
-    "version": "0.3.4",
+    "version": "0.4.0",
     "description": "Express server for Lightning Gifts functions",
     "main": "src/index.js",
     "scripts": {

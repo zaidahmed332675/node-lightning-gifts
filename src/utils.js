@@ -1,6 +1,10 @@
 // NPM Dependencies
 const bech32 = require('bech32');
 const _ = require('lodash');
+const Mixpanel = require('mixpanel');
+const crypto = require('crypto');
+
+const mixpanel = Mixpanel.init(process.env.MIXPANEL_TOKEN);
 
 exports.getInvoiceAmount = invoice => {
     const cleanInvoice = invoice.toLowerCase();
@@ -44,3 +48,16 @@ exports.buildLNURL = orderId =>
         bech32.toWords(Buffer.from(`${process.env.SERVICE_URL}/lnurl/${orderId}`)),
         1500
     );
+
+exports.trackEvent = (req, eventName, params) => {
+    const ip = process.env.NODE_ENV === 'production' ? req.ip : req.headers["x-forwarded-for"];
+    const id = crypto.createHash('md5').update(_.toString(ip)).digest("hex");
+    const route = req.baseUrl || req.path;
+
+    mixpanel.track(eventName, {
+        distinct_id: id,
+        ip,
+        route,
+        ...params
+    });
+};

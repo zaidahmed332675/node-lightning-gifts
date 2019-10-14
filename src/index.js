@@ -21,7 +21,7 @@ const {
     giftWithdrawFail,
     updateGiftChargeStatus
 } = require('./models');
-const { getInvoiceAmount, buildLNURL } = require('./utils');
+const { getInvoiceAmount, buildLNURL, trackEvent } = require('./utils');
 
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -35,6 +35,9 @@ const checkLimiter = rateLimit({
 
 const app = express();
 
+if (process.env.NODE_ENV === 'production') {
+    app.enable('trust proxy');
+}
 if (process.env.NODE_ENV === 'production') {
     Sentry.init({ dsn: process.env.SENTRY_KEY });
     app.use(Sentry.Handlers.requestHandler());
@@ -72,7 +75,9 @@ app.post('/create', apiLimiter, (req, res, next) => {
     } else {
         createInvoice({ orderId, amount, notify })
             .then(response => {
-                const { id: chargeId, order_id: orderId, status, lightning_invoice: lightningInvoice, amount } = response.data.data;
+                const {
+                    id: chargeId, order_id: orderId, status, lightning_invoice: lightningInvoice, amount
+                } = response.data.data;
                 try {
                     createGift({
                         orderId,
@@ -83,7 +88,9 @@ app.post('/create', apiLimiter, (req, res, next) => {
                         notify,
                         senderName,
                         senderMessage,
-                    }).then(gift =>
+                    }).then(gift => {
+                        trackEvent(req, 'create try', { orderId });
+
                         res.json({
                             orderId,
                             chargeId,
@@ -93,8 +100,8 @@ app.post('/create', apiLimiter, (req, res, next) => {
                             lnurl: buildLNURL(orderId),
                             senderName,
                             senderMessage,
-                        })
-                    );
+                        });
+                    });
                 } catch (error) {
                     next(error);
                 }
@@ -111,9 +118,12 @@ app.post('/webhooks/create', (req, res, next) => {
     if (status === 'paid') {
         getInvoiceStatus(chargeId)
             .then(response => {
-                const { status: chargeStatus } = response.data.data;
+                const { status: chargeStatus, price } = response.data.data;
                 try {
                     updateGiftChargeStatus({ orderId, chargeStatus });
+
+                    trackEvent(req, 'create success', { orderId, amount: price });
+
                     res.sendStatus(200)
                 } catch (error) {
                     next(error);
@@ -130,19 +140,27 @@ app.post('/webhooks/create', (req, res, next) => {
 app.get('/status/:chargeId', checkLimiter, (req, res, next) => {
     const { chargeId } = req.params;
 
-    getInvoiceStatus(chargeId)
-        .then(response => {
-            const { status } = response.data.data;
+    trackEvent(req, 'charge query', { chargeId });
 
-            res.json({ status });
-        })
-        .catch(error => {
-            next(error);
-        });
+    try {
+        getInvoiceStatus(chargeId)
+            .then(response => {
+                const { status } = response.data.data;
+
+                res.json({ status });
+            })
+            .catch(error => {
+                next(error);
+            });
+    } catch (error) {
+        next(error);
+    }
 });
 
 app.get('/gift/:orderId', checkLimiter, (req, res, next) => {
     const { orderId } = req.params;
+
+    trackEvent(req, 'gift query', { orderId });
 
     try {
         getGiftInfo(orderId).then(response => {
@@ -199,6 +217,8 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
                                 next(error);
                             }
 
+                            trackEvent(req, 'invoice redeem try', { orderId });
+
                             res.json({ withdrawalId });
                         })
                         .catch(error => {
@@ -252,6 +272,8 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
                                     next(error);
                                 }
 
+                                trackEvent(req, 'lnurl redeem try', { orderId });
+
                                 res.json({ status: 'OK' });
                             })
                             .catch(error => {
@@ -289,6 +311,7 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
 app.post('/redeemStatus/:withdrawalId', checkLimiter, (req, res, next) => {
     const { withdrawalId } = req.params;
     // const { orderId } = req.body;
+    trackEvent(req, 'redeem query', { withdrawalId });
 
     checkRedeemStatus(withdrawalId)
         .then(response => {
@@ -303,12 +326,14 @@ app.post('/redeemStatus/:withdrawalId', checkLimiter, (req, res, next) => {
 
 app.post('/webhooks/redeem', (req, res, next) => {
     const {
-        status, id: withdrawalId, fee, error
+        status, id: withdrawalId, fee, error, amount
     } = req.body;
 
     if (status === 'confirmed') {
         try {
             giftWithdrawSuccess({ withdrawalId, fee });
+
+            trackEvent(req, 'redeem success', { withdrawalId, amount });
 
             res.sendStatus(200)
         } catch (error) {
@@ -334,8 +359,13 @@ if (process.env.NODE_ENV === 'production') {
 
 // error handling
 app.use((error, req, res, next) => {
-    const statusCode = _.defaultTo(_.defaultTo(error.statusCode, res.statusCode), 500);
-    console.log('error:', error);
+    const statusCode = _.defaultTo(_.defaultTo(error.statusCode, error.response.status), _.defaultTo(res.statusCode, 500));
+    console.log('req.ip', req.ip);
+    console.log('x-forwarded-for', req.headers["x-forwarded-for"]);
+    console.log('req.baseUrl', req.baseUrl);
+    console.log('req.path', req.path);
+    trackEvent(req, 'exception', { message: error.message });
+
     res.status(statusCode).send({
         statusCode,
         message: error.message

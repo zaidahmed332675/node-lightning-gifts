@@ -37,8 +37,6 @@ const app = express();
 
 if (process.env.NODE_ENV === 'production') {
     app.enable('trust proxy');
-}
-if (process.env.NODE_ENV === 'production') {
     Sentry.init({ dsn: process.env.SENTRY_KEY });
     app.use(Sentry.Handlers.requestHandler());
 }
@@ -60,7 +58,7 @@ app.get('/currency', (req, res) => {
 });
 
 app.post('/create', apiLimiter, (req, res, next) => {
-    const { amount, senderName = null, senderMessage = null, notify = null } = req.body;
+    const { amount, senderName = null, senderMessage = null, notify = null, verifyCode = null } = req.body;
     const orderId = cryptoRandomString({ length: 48 });
 
     if (!Number.isInteger(amount)) {
@@ -72,6 +70,24 @@ app.post('/create', apiLimiter, (req, res, next) => {
     } else if (amount > 500000) {
         res.statusCode = 400;
         next(new Error('GIFT_AMOUNT_OVER_500K'));
+    } else if (!_.isNil(senderName) && !_.isString(senderName)) {
+        res.statusCode = 400;
+        next(new Error('SENDER_NAME_NOT_STRING'));
+    } else if (!_.isNil(senderName) && senderName.length > 15) {
+        res.statusCode = 400;
+        next(new Error('SENDER_NAME_BAD_LENGTH'));
+    } else if (!_.isNil(senderMessage) && !_.isString(senderMessage)) {
+        res.statusCode = 400;
+        next(new Error('SENDER_MESSAGE_NOT_STRING'));
+    } else if (!_.isNil(senderMessage) && senderMessage.length > 100) {
+        res.statusCode = 400;
+        next(new Error('SENDER_MESSAGE_BAD_LENGTH'));
+    } else if (!_.isNil(verifyCode) && !_.isNumber(verifyCode)) {
+        res.statusCode = 400;
+        next(new Error('VERIFY_CODE_NOT_NUMBER'));
+    } else if (!_.isNil(verifyCode) && verifyCode.length !== 4) {
+        res.statusCode = 400;
+        next(new Error('VERIFY_CODE_BAD_LENGTH'));
     } else {
         createInvoice({ orderId, amount, notify })
             .then(response => {
@@ -97,6 +113,7 @@ app.post('/create', apiLimiter, (req, res, next) => {
                             status,
                             lightningInvoice,
                             amount,
+                            notify,
                             lnurl: buildLNURL(orderId),
                             senderName,
                             senderMessage,

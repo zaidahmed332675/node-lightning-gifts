@@ -42,11 +42,11 @@ exports.getInvoiceAmount = invoice => {
     return amountAsNumber;
 };
 
-exports.buildLNURL = (orderId, verifyCode) =>
+exports.buildLNURL = (orderId) =>
     bech32.encode(
         'lnurl',
         bech32.toWords(Buffer.from(
-            `${process.env.SERVICE_URL}/lnurl/${orderId}${verifyCode ? `?verifyCode=${verifyCode}` : ''}`
+            `${process.env.SERVICE_URL}/lnurl/${orderId}`
         )),
         1500
     );

@@ -3,6 +3,7 @@ const axios = require('axios');
 
 const openNodeApi = axios.create({
     baseURL: 'https://api.opennode.co/v1',
+    timeout: 15000,
     headers: {
         Authorization: process.env.OPENNODE_KEY,
         'Content-Type': 'application/json'
@@ -11,6 +12,7 @@ const openNodeApi = axios.create({
 
 const openNodeApiV2 = axios.create({
     baseURL: 'https://api.opennode.co/v2',
+    timeout: 15000,
     headers: {
         Authorization: process.env.OPENNODE_KEY,
         'Content-Type': 'application/json'
@@ -28,7 +30,9 @@ exports.createInvoice = ({ orderId, amount, notify }) => {
             callback_url: `${process.env.SERVICE_URL}/webhooks/create`
         });
     } catch (error) {
-        throw error;
+        const newError = error;
+        newError.message = 'OpenNode Error';
+        throw newError;
     }
 };
 
@@ -36,7 +40,9 @@ exports.showCurrencies = () => {
     try {
         return openNodeApi.get('/currencies');
     } catch (error) {
-        throw error;
+        const newError = error;
+        newError.message = 'OpenNode Error';
+        throw newError;
     }
 };
 
@@ -44,7 +50,9 @@ exports.getInvoiceStatus = chargeId => {
     try {
         return openNodeApi.get(`/charge/${chargeId}`);
     } catch (error) {
-        throw error;
+        const newError = error;
+        newError.message = 'OpenNode Error';
+        throw newError;
     }
 };
 
@@ -57,7 +65,9 @@ exports.redeemGift = ({ amount, invoice }) => {
             callback_url: `${process.env.SERVICE_URL}/webhooks/redeem`
         });
     } catch (error) {
-        throw error;
+        const newError = error;
+        newError.message = 'OpenNode Error';
+        throw newError;
     }
 };
 
@@ -65,7 +75,9 @@ exports.checkRedeemStatus = withdrawalId => {
     try {
         return openNodeApi.get(`/withdrawal/${withdrawalId}`);
     } catch (error) {
-        throw error;
+        const newError = error;
+        newError.message = 'OpenNode Error';
+        throw newError;
     }
 };
 

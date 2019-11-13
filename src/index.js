@@ -37,8 +37,6 @@ const app = express();
 
 if (process.env.NODE_ENV === 'production') {
     app.enable('trust proxy');
-}
-if (process.env.NODE_ENV === 'production') {
     Sentry.init({ dsn: process.env.SENTRY_KEY });
     app.use(Sentry.Handlers.requestHandler());
 }
@@ -60,7 +58,7 @@ app.get('/currency', (req, res) => {
 });
 
 app.post('/create', apiLimiter, (req, res, next) => {
-    const { amount, senderName = null, senderMessage = null, notify = null } = req.body;
+    const { amount, senderName = null, senderMessage = null, notify = null, verifyCode = null } = req.body;
     const orderId = cryptoRandomString({ length: 48 });
 
     if (!Number.isInteger(amount)) {
@@ -72,12 +70,31 @@ app.post('/create', apiLimiter, (req, res, next) => {
     } else if (amount > 500000) {
         res.statusCode = 400;
         next(new Error('GIFT_AMOUNT_OVER_500K'));
+    } else if (!_.isNil(senderName) && !_.isString(senderName)) {
+        res.statusCode = 400;
+        next(new Error('SENDER_NAME_NOT_STRING'));
+    } else if (!_.isNil(senderName) && senderName.length > 15) {
+        res.statusCode = 400;
+        next(new Error('SENDER_NAME_BAD_LENGTH'));
+    } else if (!_.isNil(senderMessage) && !_.isString(senderMessage)) {
+        res.statusCode = 400;
+        next(new Error('SENDER_MESSAGE_NOT_STRING'));
+    } else if (!_.isNil(senderMessage) && senderMessage.length > 100) {
+        res.statusCode = 400;
+        next(new Error('SENDER_MESSAGE_BAD_LENGTH'));
+    } else if (!_.isNil(verifyCode) && !_.isNumber(verifyCode)) {
+        res.statusCode = 400;
+        next(new Error('VERIFY_CODE_NOT_NUMBER'));
+    } else if (!_.isNil(verifyCode) && verifyCode.toString().length !== 4) {
+        res.statusCode = 400;
+        next(new Error('VERIFY_CODE_BAD_LENGTH'));
     } else {
         createInvoice({ orderId, amount, notify })
             .then(response => {
                 const {
                     id: chargeId, order_id: orderId, status, lightning_invoice: lightningInvoice, amount
                 } = response.data.data;
+
                 try {
                     createGift({
                         orderId,
@@ -88,6 +105,7 @@ app.post('/create', apiLimiter, (req, res, next) => {
                         notify,
                         senderName,
                         senderMessage,
+                        verifyCode,
                     }).then(gift => {
                         trackEvent(req, 'create try', { orderId });
 
@@ -97,6 +115,7 @@ app.post('/create', apiLimiter, (req, res, next) => {
                             status,
                             lightningInvoice,
                             amount,
+                            notify,
                             lnurl: buildLNURL(orderId),
                             senderName,
                             senderMessage,
@@ -159,17 +178,23 @@ app.get('/status/:chargeId', checkLimiter, (req, res, next) => {
 
 app.get('/gift/:orderId', checkLimiter, (req, res, next) => {
     const { orderId } = req.params;
+    const { verifyCode: verifyCodeTry = null  } = req.query;
 
     trackEvent(req, 'gift query', { orderId });
 
     try {
         getGiftInfo(orderId).then(response => {
-            if (!_.isNil(response)) {
-                res.json({ ...response, orderId, lnurl: buildLNURL(orderId) });
+            if (_.isNil(response)) {
+                res.statusCode = 404;
+                next(new Error('GIFT_NOT_FOUND'));
             } else {
-                res.status(404).send({
-                    message: 'notFound'
-                });
+                const { amount, spent, chargeStatus, verifyCode } = response;
+
+                if (!_.isNil(verifyCode) && Number(verifyCodeTry) !== verifyCode) {
+                    res.json({ amount, chargeStatus, spent, orderId, verifyCodeRequired: true });
+                } else {
+                    res.json({ ...response, orderId, lnurl: buildLNURL(orderId) });
+                }
             }
         });
     } catch (error) {
@@ -186,8 +211,8 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
                 res.statusCode = 404;
                 next(new Error('GIFT_NOT_FOUND'));
             } else {
-                const { amount, spent, chargeStatus } = response;
-                const { invoice } = req.body;
+                const { amount, spent, chargeStatus, verifyCode } = response;
+                const { invoice, verifyCode: verifyCodeTry  } = req.body;
                 const invoiceAmount = getInvoiceAmount(invoice);
 
                 if (invoiceAmount !== amount) {
@@ -202,6 +227,9 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
                 } else if (chargeStatus !== 'paid') {
                     res.statusCode = 400;
                     next(new Error('GIFT_INVOICE_UNPAID'));
+                } else if (!_.isNil(verifyCode) && Number(verifyCodeTry) !== verifyCode) {
+                    res.statusCode = 400;
+                    next(new Error('BAD_VERIFY_CODE'));
                 } else {
                     redeemGift({ amount, invoice })
                         .then(response => {
@@ -234,30 +262,43 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
 
 app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
         const { orderId } = req.params;
+        const { pr } = req.query;
 
         getGiftInfo(orderId)
             .then(response => {
+                const { amount, spent, chargeStatus } = response;
+
                 if (_.isNil(response)) {
                     res.statusCode = 404;
                     next(new Error('GIFT_NOT_FOUND'));
+                } else if (spent === 'pending') {
+                    res.statusCode = 400;
+                    next(new Error('GIFT_REDEEM_PENDING'));
+                } else if (spent) {
+                    res.statusCode = 400;
+                    next(new Error('GIFT_SPENT'));
+                } else if (chargeStatus !== 'paid') {
+                    res.statusCode = 400;
+                    next(new Error('GIFT_INVOICE_UNPAID'));
+                } else if (_.isNil(pr)){
+                    // return first lnurl response
+                    res.json({
+                        status: 'OK',
+                        callback: `${process.env.SERVICE_URL}/lnurl/${orderId}`,
+                        k1: orderId,
+                        maxWithdrawable: amount * 1000,
+                        minWithdrawable: amount * 1000,
+                        defaultDescription: `lightning.gifts redeem ${orderId}`,
+                        tag: 'withdrawRequest'
+                    });
                 } else {
-                    const { amount, spent, chargeStatus } = response;
-                    const { pr } = req.query; // if this exists we will redeem the gift already
+                    // if pr exists we will redeem the gift already
                     const invoiceAmount = pr ? getInvoiceAmount(pr) : null;
 
-                    if (pr && invoiceAmount !== amount /* only checked when redeeming */) {
+                    if (invoiceAmount !== amount) {
                         res.statusCode = 400;
                         next(new Error('BAD_INVOICE_AMOUNT'));
-                    } else if (spent === 'pending') {
-                        res.statusCode = 400;
-                        next(new Error('GIFT_REDEEM_PENDING'));
-                    } else if (spent) {
-                        res.statusCode = 400;
-                        next(new Error('GIFT_SPENT'));
-                    } else if (chargeStatus !== 'paid') {
-                        res.statusCode = 400;
-                        next(new Error('GIFT_INVOICE_UNPAID'));
-                    } else if (pr) {
+                    } else {
                         redeemGift({ amount, invoice: pr })
                             .then(response => {
                                 const { id: withdrawalId, reference } = response.data.data;
@@ -279,17 +320,6 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
                             .catch(error => {
                                 next(error);
                             });
-                    } else {
-                        // return first lnurl response
-                        res.json({
-                            status: 'OK',
-                            callback: `${process.env.SERVICE_URL}/lnurl/${orderId}`,
-                            k1: orderId,
-                            maxWithdrawable: amount * 1000,
-                            minWithdrawable: amount * 1000,
-                            defaultDescription: `lightning.gifts redeem ${orderId}`,
-                            tag: 'withdrawRequest'
-                        });
                     }
                 }
             })
@@ -300,7 +330,7 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
     // lnurl error handling
     (error, req, res, next) => {
         const statusCode = _.defaultTo(_.defaultTo(error.statusCode, res.statusCode), 500);
-        console.log('lnurl error:', error.response);
+        console.log('lnurl error:', error);
         res.status(statusCode).send({
             status: 'ERROR',
             reason: error.message
@@ -361,8 +391,8 @@ if (process.env.NODE_ENV === 'production') {
 app.use((error, req, res, next) => {
     const statusCode =
         _.defaultTo(_.defaultTo(error.statusCode, _.get(error, 'response.status')), _.defaultTo(res.statusCode, 500));
-    console.log('req.ip', req.ip);
-    console.log('x-forwarded-for', req.headers["x-forwarded-for"]);
+    // console.log('req.ip', req.ip);
+    // console.log('x-forwarded-for', req.headers["x-forwarded-for"]);
     trackEvent(req, 'exception', { message: error.message });
 
     res.status(statusCode).send({

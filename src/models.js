@@ -31,7 +31,9 @@ exports.getGiftInfo = orderId =>
             return null;
         });
 
-exports.createGift = ({ orderId, chargeId, amount, chargeInvoice, chargeStatus, notify, senderName, senderMessage }) =>
+exports.createGift = ({
+    orderId, chargeId, amount, chargeInvoice, chargeStatus, notify, senderName, senderMessage, verifyCode
+}) =>
     dbRef
         .doc(orderId)
         .set({
@@ -46,6 +48,7 @@ exports.createGift = ({ orderId, chargeId, amount, chargeInvoice, chargeStatus, 
             createdAt: admin.firestore.Timestamp.now(),
             senderName,
             senderMessage,
+            verifyCode,
             notify
         });
 

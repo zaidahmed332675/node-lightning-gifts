@@ -359,11 +359,10 @@ if (process.env.NODE_ENV === 'production') {
 
 // error handling
 app.use((error, req, res, next) => {
-    const statusCode = _.defaultTo(_.defaultTo(error.statusCode, error.response.status), _.defaultTo(res.statusCode, 500));
+    const statusCode =
+        _.defaultTo(_.defaultTo(error.statusCode, _.get(error, 'response.status')), _.defaultTo(res.statusCode, 500));
     console.log('req.ip', req.ip);
     console.log('x-forwarded-for', req.headers["x-forwarded-for"]);
-    console.log('req.baseUrl', req.baseUrl);
-    console.log('req.path', req.path);
     trackEvent(req, 'exception', { message: error.message });
 
     res.status(statusCode).send({

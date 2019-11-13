@@ -3,7 +3,7 @@ const axios = require('axios');
 
 const openNodeApi = axios.create({
     baseURL: 'https://api.opennode.co/v1',
-    timeout: 15000,
+    timeout: 20000,
     headers: {
         Authorization: process.env.OPENNODE_KEY,
         'Content-Type': 'application/json'
@@ -12,7 +12,7 @@ const openNodeApi = axios.create({
 
 const openNodeApiV2 = axios.create({
     baseURL: 'https://api.opennode.co/v2',
-    timeout: 15000,
+    timeout: 20000,
     headers: {
         Authorization: process.env.OPENNODE_KEY,
         'Content-Type': 'application/json'

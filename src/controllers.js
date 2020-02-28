@@ -86,7 +86,12 @@ exports.notifyRedeem = data => {
         return;
     }
     try {
-        axios.post(data.notify, { id: data.id, amount: data.amount, spent: true }, { timeout: 2000 });
+        axios.post(data.notify, {
+            id: data.id,
+            orderId: data.id,
+            amount: data.amount,
+            spent: true
+        }, { timeout: 2000 });
     } catch (error) {
         throw error;
     }

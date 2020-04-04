@@ -1,8 +1,6 @@
 // NPM Dependencies
 const admin = require('firebase-admin');
-
-// Module Dependencies
-const { notifyRedeem } = require('./controllers');
+const axios = require('axios');
 
 admin.initializeApp({
     credential: admin.credential.cert({
@@ -16,9 +14,9 @@ const db = admin.firestore();
 const giftDb = process.env.NODE_ENV === 'production' ? 'prod-gifts' : 'dev-gifts';
 const dbRef = db.collection(giftDb);
 
-exports.getGiftInfo = orderId =>
+exports.getGiftInfo = giftId =>
     dbRef
-        .doc(orderId)
+        .doc(giftId)
         .get()
         .then(doc => {
             if (!doc.exists) {
@@ -27,17 +25,15 @@ exports.getGiftInfo = orderId =>
                 return doc.data();
             }
         })
-        .catch(err => {
-            return null;
-        });
+        .catch(() => null);
 
 exports.createGift = ({
-    orderId, chargeId, amount, chargeInvoice, chargeStatus, notify, senderName, senderMessage, verifyCode
+    giftId, chargeId, amount, chargeInvoice, chargeStatus, notify, senderName, senderMessage, verifyCode
 }) =>
     dbRef
-        .doc(orderId)
+        .doc(giftId)
         .set({
-            id: orderId,
+            id: giftId,
             amount: Number(amount),
             chargeInfo: {
                 chargeId,
@@ -52,66 +48,53 @@ exports.createGift = ({
             notify
         });
 
-exports.updateGiftChargeStatus = ({ orderId, chargeStatus }) =>
+exports.updateGiftChargeStatus = ({ giftId, chargeStatus }) =>
     dbRef
-        .doc(orderId)
+        .doc(giftId)
         .update({ chargeStatus });
 
-exports.giftWithdrawTry = ({ orderId, withdrawalId, reference }) =>
+exports.giftWithdrawTry = ({ giftId, reference }) =>
     dbRef
-        .doc(orderId)
+        .doc(giftId)
         .update({
             spent: 'pending',
             withdrawalInfo: {
-                withdrawalId,
                 withdrawalInvoice: reference,
                 createdAt: admin.firestore.Timestamp.now()
             }
         });
 
-exports.giftWithdrawSuccess = ({ withdrawalId, fee }) =>
+exports.giftWithdrawSuccess = ({ giftId, withdrawalId, fee }) => {
     dbRef
-        .where('withdrawalInfo.withdrawalId', '==', withdrawalId)
-        .get()
-        .then(snapshot => {
-            if (snapshot.empty) {
-                console.log('No matching withdrawalIds');
-                return null;
-            }
-
-            snapshot.forEach(doc => {
-                dbRef
-                    .doc(doc.id)
-                    .set({
-                        spent: true,
-                        withdrawalInfo: { fee }
-                    }, { merge: true });
-
-                notifyRedeem(doc.data());
-            });
-        })
-        .catch(error => {
-            throw error;
+        .doc(giftId)
+        .update({
+            spent: true,
+            withdrawalInfo: { fee, withdrawalId }
         });
 
-exports.giftWithdrawFail = ({ withdrawalId, error }) =>
     dbRef
-        .where('withdrawalInfo.withdrawalId', '==', withdrawalId)
+        .doc(giftId)
         .get()
         .then(snapshot => {
-            if (snapshot.empty) {
-                console.log('No matching withdrawalIds');
-                return null;
-            }
+            let data = snapshot.data();
 
-            snapshot.forEach(doc => {
-                dbRef
-                    .doc(doc.id)
-                    .set({
-                        spent: false,
-                        withdrawalInfo: { error }
-                    }, { merge: true });
-            });
+            if (data.notify) {
+                axios.post(data.notify, {
+                    id: data.id,
+                    orderId: data.id,
+                    amount: data.amount,
+                    spent: true
+                }, { timeout: 2000 })
+            }
+        });
+}
+
+exports.giftWithdrawFail = ({ giftId, error }) =>
+    dbRef
+        .doc(giftId)
+        .update({
+            spent: false,
+            withdrawalInfo: { error }
         })
         .catch(error => {
             throw error;

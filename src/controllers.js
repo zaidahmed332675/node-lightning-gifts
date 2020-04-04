@@ -1,98 +1,72 @@
 // NPM Dependencies
 const axios = require('axios');
 
-const openNodeApi = axios.create({
-    baseURL: 'https://api.opennode.co/v1',
+const { giftWithdrawTry } = require('./models');
+
+const lnpay = axios.create({
+    baseURL: `https://lnpay.co/v1/wallet/${process.env.LNPAY_WALLET_KEY}`,
     timeout: 20000,
     headers: {
-        Authorization: process.env.OPENNODE_KEY,
-        'Content-Type': 'application/json'
+        'X-Api-Key': process.env.LNPAY_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
     }
 });
 
-const openNodeApiV2 = axios.create({
-    baseURL: 'https://api.opennode.co/v2',
-    timeout: 20000,
+const getLnTx = id => axios.get(`https://lnpay.co/v1/lntx/${id}`, {
     headers: {
-        Authorization: process.env.OPENNODE_KEY,
-        'Content-Type': 'application/json'
+        'X-Api-Key': process.env.LNPAY_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
     }
-});
+})
 
-exports.createInvoice = ({ orderId, amount, notify }) => {
-    try {
-        const description = `Lightning gift for ${amount} sats` + (notify ? ` [${notify}]` : '');
-
-        return openNodeApi.post('/charges', {
-            order_id: orderId,
-            amount,
-            description,
-            callback_url: `${process.env.SERVICE_URL}/webhooks/create`
-        });
-    } catch (error) {
-        const newError = error;
-        newError.message = 'OpenNode Error';
-        throw newError;
+function lnpayError (error) {
+    if (error.response.data.status) {
+      error.message = `LNPay.co error ${error.response.data.status}: ${error.response.data.message}`;
     }
-};
 
-exports.showCurrencies = () => {
-    try {
-        return openNodeApi.get('/currencies');
-    } catch (error) {
-        const newError = error;
-        newError.message = 'OpenNode Error';
-        throw newError;
-    }
+    error.message = 'LNPay.co error: ' + error.message;
+
+    throw error;
+}
+
+exports.createInvoice = ({ giftId, amount }) => {
+    const description = `Lightning gift for ${amount} sats`;
+
+    return lnpay.post('/invoice', {
+        passThru: { giftId },
+        num_satoshis: amount,
+        memo: description
+    })
+        .then(r => r.data)
+        .catch(lnpayError);
 };
 
 exports.getInvoiceStatus = chargeId => {
-    try {
-        return openNodeApi.get(`/charge/${chargeId}`);
-    } catch (error) {
-        const newError = error;
-        newError.message = 'OpenNode Error';
-        throw newError;
-    }
+    return getLnTx(chargeId)
+        .then(r => r.data)
+        .then(lntx => lntx.settled === 0 ? 'unpaid' : 'paid')
+        .catch(lnpayError);
 };
 
-exports.redeemGift = ({ amount, invoice }) => {
-    try {
-        return openNodeApiV2.post('/withdrawals', {
-            type: 'ln',
-            amount,
-            address: invoice,
-            callback_url: `${process.env.SERVICE_URL}/webhooks/redeem`
-        });
-    } catch (error) {
-        const newError = error;
-        newError.message = 'OpenNode Error';
-        throw newError;
-    }
+exports.redeemGift = ({ giftId, amount, invoice }) => {
+    giftWithdrawTry({
+        giftId,
+        reference: invoice
+    });
+
+    return lnpay.post('/withdraw', {
+        passThru: { giftId },
+        payment_request: invoice
+    })
+        .then(r => r.data)
+        .then(data => data.lnTx)
+        .catch(lnpayError);
 };
 
 exports.checkRedeemStatus = withdrawalId => {
-    try {
-        return openNodeApi.get(`/withdrawal/${withdrawalId}`);
-    } catch (error) {
-        const newError = error;
-        newError.message = 'OpenNode Error';
-        throw newError;
-    }
-};
-
-exports.notifyRedeem = data => {
-    if (!data.notify) {
-        return;
-    }
-    try {
-        axios.post(data.notify, {
-            id: data.id,
-            orderId: data.id,
-            amount: data.amount,
-            spent: true
-        }, { timeout: 2000 });
-    } catch (error) {
-        throw error;
-    }
+    return lnpay.get(`/withdrawal/${withdrawalId}`)
+        .then(r => r.data)
+        .catch(lnpayError);
 };

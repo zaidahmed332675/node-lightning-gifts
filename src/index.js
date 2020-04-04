@@ -7,7 +7,6 @@ const Sentry = require('@sentry/node');
 
 // Module Dependencies
 const {
-    showCurrencies,
     createInvoice,
     getInvoiceStatus,
     redeemGift,
@@ -17,7 +16,6 @@ const {
     getGiftInfo,
     createGift,
     giftWithdrawSuccess,
-    giftWithdrawTry,
     giftWithdrawFail,
     updateGiftChargeStatus
 } = require('./models');
@@ -51,15 +49,9 @@ app.use(express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.get('/currency', (req, res) => {
-    showCurrencies().then(response => {
-        res.json(response.data);
-    });
-});
-
 app.post('/create', apiLimiter, (req, res, next) => {
     const { amount, senderName = null, senderMessage = null, notify = null, verifyCode = null } = req.body;
-    const orderId = cryptoRandomString({ length: 48 });
+    const giftId = cryptoRandomString({ length: 48 });
 
     if (!Number.isInteger(amount)) {
         res.statusCode = 400;
@@ -89,36 +81,36 @@ app.post('/create', apiLimiter, (req, res, next) => {
         res.statusCode = 400;
         next(new Error('VERIFY_CODE_BAD_LENGTH'));
     } else {
-        createInvoice({ orderId, amount, notify })
-            .then(response => {
-                const {
-                    id: chargeId, order_id: orderId, status, lightning_invoice: lightningInvoice, amount
-                } = response.data.data;
+        createInvoice({ giftId, amount, notify })
+            .then(({ id, settled, payment_request, num_satoshis }) => {
+                const chargeId = id;
+                const amount = num_satoshis;
+                const status = settled === 0 ? 'unpaid' : 'paid';
 
                 try {
                     createGift({
-                        orderId,
+                        giftId,
                         amount,
                         chargeId,
                         chargeStatus: status,
-                        chargeInvoice: lightningInvoice.payreq,
+                        chargeInvoice: payment_request,
                         notify,
                         senderName,
                         senderMessage,
-                        verifyCode,
+                        verifyCode
                     }).then(gift => {
-                        trackEvent(req, 'create try', { orderId });
+                        trackEvent(req, 'create try', { giftId });
 
                         res.json({
-                            orderId,
+                            orderId: giftId,
                             chargeId,
                             status,
-                            lightningInvoice,
+                            lightningInvoice: { payreq: payment_request },
                             amount,
                             notify,
-                            lnurl: buildLNURL(orderId),
+                            lnurl: buildLNURL(giftId),
                             senderName,
-                            senderMessage,
+                            senderMessage
                         });
                     });
                 } catch (error) {
@@ -131,29 +123,57 @@ app.post('/create', apiLimiter, (req, res, next) => {
     }
 });
 
-app.post('/webhooks/create', (req, res, next) => {
-    const { id: chargeId, status, order_id: orderId } = req.body;
+app.post(`/webhook/${process.env.LNPAY_WALLET}`, (req, res, next) => {
+    const { event, data: {wtx} } = req.body;
 
-    if (status === 'paid') {
-        getInvoiceStatus(chargeId)
-            .then(response => {
-                const { status: chargeStatus, price } = response.data.data;
+    if (wtx.wal.id !== process.env.LNPAY_WALLET) {
+        res.sendStatus(200);
+        return
+    }
+
+    const { giftId } = wtx.passThru
+
+    switch (event.name) {
+        case 'wallet_receive':
+            // a gift was paid
+            try {
+                updateGiftChargeStatus({ giftId, chargeStatus: 'paid' })
+
+                trackEvent(req, 'create success', { giftId, amount: wtx.lnTx.num_satoshis });
+            } catch (error) {
+                next(error);
+                return
+            }
+
+            break
+        case 'wallet_send':
+            // a gift was redeemed
+            const status = wtx.lnTx.settled === 1 ? 'confirmed' : 'failed';
+            const withdrawalId = wtx.lnTx.id;
+            const amount = wtx.lnTx.num_satoshis;
+            const fee = 0;
+
+            if (status === 'confirmed') {
                 try {
-                    updateGiftChargeStatus({ orderId, chargeStatus });
-
-                    trackEvent(req, 'create success', { orderId, amount: price });
-
-                    res.sendStatus(200)
+                    giftWithdrawSuccess({ giftId, withdrawalId, fee });
+                    trackEvent(req, 'redeem success', { giftId, amount });
                 } catch (error) {
                     next(error);
+                    return
                 }
-            })
-            .catch(error => {
-                next(error);
-            });
-    } else {
-        res.sendStatus(200)
+            } else if (status === 'failed') {
+                try {
+                    giftWithdrawFail({ giftId });
+                } catch (error) {
+                    next(error);
+                    return
+                }
+            }
+
+            break
     }
+
+    res.sendStatus(200);
 });
 
 app.get('/status/:chargeId', checkLimiter, (req, res, next) => {
@@ -163,9 +183,7 @@ app.get('/status/:chargeId', checkLimiter, (req, res, next) => {
 
     try {
         getInvoiceStatus(chargeId)
-            .then(response => {
-                const { status } = response.data.data;
-
+            .then(status => {
                 res.json({ status });
             })
             .catch(error => {
@@ -176,14 +194,14 @@ app.get('/status/:chargeId', checkLimiter, (req, res, next) => {
     }
 });
 
-app.get('/gift/:orderId', checkLimiter, (req, res, next) => {
-    const { orderId } = req.params;
-    const { verifyCode: verifyCodeTry = null  } = req.query;
+app.get('/gift/:giftId', checkLimiter, (req, res, next) => {
+    const { giftId } = req.params;
+    const { verifyCode: verifyCodeTry = null } = req.query;
 
-    trackEvent(req, 'gift query', { orderId });
+    trackEvent(req, 'gift query', { giftId });
 
     try {
-        getGiftInfo(orderId).then(response => {
+        getGiftInfo(giftId).then(response => {
             if (_.isNil(response)) {
                 res.statusCode = 404;
                 next(new Error('GIFT_NOT_FOUND'));
@@ -191,9 +209,15 @@ app.get('/gift/:orderId', checkLimiter, (req, res, next) => {
                 const { amount, spent, chargeStatus, verifyCode } = response;
 
                 if (!_.isNil(verifyCode) && Number(verifyCodeTry) !== verifyCode) {
-                    res.json({ amount, chargeStatus, spent, orderId, verifyCodeRequired: true });
+                    res.json({
+                        amount,
+                        chargeStatus,
+                        spent,
+                        orderId: giftId,
+                        verifyCodeRequired: true
+                    });
                 } else {
-                    res.json({ ...response, orderId, lnurl: buildLNURL(orderId) });
+                    res.json({ ...response, orderId: giftId, lnurl: buildLNURL(giftId) });
                 }
             }
         });
@@ -202,10 +226,10 @@ app.get('/gift/:orderId', checkLimiter, (req, res, next) => {
     }
 });
 
-app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
-    const { orderId } = req.params;
+app.post('/redeem/:giftId', apiLimiter, (req, res, next) => {
+    const { giftId } = req.params;
 
-    getGiftInfo(orderId)
+    getGiftInfo(giftId)
         .then(response => {
             if (_.isNil(response)) {
                 res.statusCode = 404;
@@ -231,22 +255,9 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
                     res.statusCode = 400;
                     next(new Error('BAD_VERIFY_CODE'));
                 } else {
-                    redeemGift({ amount, invoice })
-                        .then(response => {
-                            const { id: withdrawalId, reference } = response.data.data;
-
-                            try {
-                                giftWithdrawTry({
-                                    orderId,
-                                    withdrawalId,
-                                    reference
-                                });
-                            } catch (error) {
-                                next(error);
-                            }
-
-                            trackEvent(req, 'invoice redeem try', { orderId });
-
+                    redeemGift({ giftId, amount, invoice })
+                        .then(({ id: withdrawalId }) => {
+                            trackEvent(req, 'invoice redeem try', { giftId });
                             res.json({ withdrawalId });
                         })
                         .catch(error => {
@@ -260,11 +271,11 @@ app.post('/redeem/:orderId', apiLimiter, (req, res, next) => {
         });
 });
 
-app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
-        const { orderId } = req.params;
+app.get('/lnurl/:giftId', apiLimiter, (req, res, next) => {
+        const { giftId } = req.params;
         const { pr } = req.query;
 
-        getGiftInfo(orderId)
+        getGiftInfo(giftId)
             .then(response => {
                 const { amount, spent, chargeStatus } = response;
 
@@ -280,15 +291,15 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
                 } else if (chargeStatus !== 'paid') {
                     res.statusCode = 400;
                     next(new Error('GIFT_INVOICE_UNPAID'));
-                } else if (_.isNil(pr)){
+                } else if (_.isNil(pr)) {
                     // return first lnurl response
                     res.json({
                         status: 'OK',
-                        callback: `${process.env.SERVICE_URL}/lnurl/${orderId}`,
-                        k1: orderId,
+                        callback: `${process.env.SERVICE_URL}/lnurl/${giftId}`,
+                        k1: giftId,
                         maxWithdrawable: amount * 1000,
                         minWithdrawable: amount * 1000,
-                        defaultDescription: `lightning.gifts redeem ${orderId}`,
+                        defaultDescription: `lightning.gifts redeem ${giftId}`,
                         tag: 'withdrawRequest'
                     });
                 } else {
@@ -299,22 +310,9 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
                         res.statusCode = 400;
                         next(new Error('BAD_INVOICE_AMOUNT'));
                     } else {
-                        redeemGift({ amount, invoice: pr })
-                            .then(response => {
-                                const { id: withdrawalId, reference } = response.data.data;
-
-                                try {
-                                    giftWithdrawTry({
-                                        orderId,
-                                        withdrawalId,
-                                        reference
-                                    });
-                                } catch (error) {
-                                    next(error);
-                                }
-
-                                trackEvent(req, 'lnurl redeem try', { orderId });
-
+                        redeemGift({ giftId, amount, invoice: pr })
+                            .then(() => {
+                                trackEvent(req, 'lnurl redeem try', { giftId });
                                 res.json({ status: 'OK' });
                             })
                             .catch(error => {
@@ -340,47 +338,18 @@ app.get('/lnurl/:orderId', apiLimiter, (req, res, next) => {
 
 app.post('/redeemStatus/:withdrawalId', checkLimiter, (req, res, next) => {
     const { withdrawalId } = req.params;
-    // const { orderId } = req.body;
+    // const { giftId } = req.body;
     trackEvent(req, 'redeem query', { withdrawalId });
 
     checkRedeemStatus(withdrawalId)
         .then(response => {
-            const { reference, status } = response.data.data;
+            const { reference, status } = response.data;
 
             res.json({ reference, status });
         })
-        .catch(error => {
+        .catch(() => {
             next(new Error('WITHDRAWAL_FAILED'));
         });
-});
-
-app.post('/webhooks/redeem', (req, res, next) => {
-    const {
-        status, id: withdrawalId, fee, error, amount
-    } = req.body;
-
-    if (status === 'confirmed') {
-        try {
-            giftWithdrawSuccess({ withdrawalId, fee });
-
-            trackEvent(req, 'redeem success', { withdrawalId, amount });
-
-            res.sendStatus(200)
-        } catch (error) {
-            next(error);
-        }
-    } else if (_.includes(['error', 'failed'], status)) {
-        try {
-            giftWithdrawFail({ withdrawalId, error });
-
-            res.sendStatus(200)
-        } catch (error) {
-            next(error);
-        }
-    } else {
-        next();
-    }
-
 });
 
 if (process.env.NODE_ENV === 'production') {

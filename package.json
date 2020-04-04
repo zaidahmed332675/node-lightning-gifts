@@ -27,5 +27,8 @@
     "engines": {
         "node": "10.x"
     },
-    "keywords": []
+    "keywords": [],
+    "prettier": {
+        "requirePragma": true
+    }
 }

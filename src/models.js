@@ -69,7 +69,8 @@ exports.giftWithdrawSuccess = ({ giftId, withdrawalId, fee }) => {
         .doc(giftId)
         .update({
             spent: true,
-            withdrawalInfo: { fee, withdrawalId }
+            'withdrawalInfo.fee': fee,
+            'withdrawalInfo.withdrawalId': withdrawalId
         });
 
     dbRef

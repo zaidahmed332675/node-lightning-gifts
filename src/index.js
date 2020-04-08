@@ -158,15 +158,12 @@ app.get('/lnurl', apiLimiter, (req, res, next) => {
 
                     trackEvent(req, 'lnurl create try', { giftId });
 
-                    let base = process.env.SERVICE_URL.replace(/\/\/[^\.]+\./, '//');
-                    let url = `${base}/redeem/${giftId}`;
-
                     res.json({
                         pr: payment_request,
                         successAction: {
                             tag: 'url',
                             description: "Here's your gift URL",
-                            url
+                            url: `${process.env.SERVICE_URL}/view/${giftId}`
                         },
                         disposable: false,
                         routes: []
@@ -247,6 +244,12 @@ app.get('/status/:chargeId', checkLimiter, (req, res, next) => {
         next(error);
     }
 });
+
+app.get('/view/:giftId', apiLimiter, (req, res, next) => {
+    let { giftId } = req.params;
+    let base = process.env.SERVICE_URL.replace(/\/\/[^\.]+\./, '//');
+    res.redirect(`${base}/redeem/${giftId}`);
+})
 
 app.get('/gift/:giftId', checkLimiter, (req, res, next) => {
     const { giftId } = req.params;

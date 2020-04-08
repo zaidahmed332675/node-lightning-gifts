@@ -19,7 +19,12 @@ const {
     giftWithdrawFail,
     updateGiftChargeStatus
 } = require('./models');
-const { getInvoiceAmount, buildLNURL, trackEvent } = require('./utils');
+const {
+    getInvoiceAmount,
+    buildLNURL,
+    trackEvent,
+    validateGiftCreation
+} = require('./utils');
 
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -53,41 +58,92 @@ app.post('/create', apiLimiter, (req, res, next) => {
     const { amount, senderName = null, senderMessage = null, notify = null, verifyCode = null } = req.body;
     const giftId = cryptoRandomString({ length: 48 });
 
-    if (!Number.isInteger(amount)) {
-        res.statusCode = 400;
-        next(new Error('GIFT_AMOUNT_NOT_WHOLE_NUMBER'));
-    } else if (amount < 100) {
-        res.statusCode = 400;
-        next(new Error('GIFT_AMOUNT_UNDER_100'));
-    } else if (amount > 500000) {
-        res.statusCode = 400;
-        next(new Error('GIFT_AMOUNT_OVER_500K'));
-    } else if (!_.isNil(senderName) && !_.isString(senderName)) {
-        res.statusCode = 400;
-        next(new Error('SENDER_NAME_NOT_STRING'));
-    } else if (!_.isNil(senderName) && senderName.length > 15) {
-        res.statusCode = 400;
-        next(new Error('SENDER_NAME_BAD_LENGTH'));
-    } else if (!_.isNil(senderMessage) && !_.isString(senderMessage)) {
-        res.statusCode = 400;
-        next(new Error('SENDER_MESSAGE_NOT_STRING'));
-    } else if (!_.isNil(senderMessage) && senderMessage.length > 100) {
-        res.statusCode = 400;
-        next(new Error('SENDER_MESSAGE_BAD_LENGTH'));
-    } else if (!_.isNil(verifyCode) && !_.isNumber(verifyCode)) {
-        res.statusCode = 400;
-        next(new Error('VERIFY_CODE_NOT_NUMBER'));
-    } else if (!_.isNil(verifyCode) && verifyCode.toString().length !== 4) {
-        res.statusCode = 400;
-        next(new Error('VERIFY_CODE_BAD_LENGTH'));
+    const { err, statusCode } = validateGiftCreation(amount, senderName, senderMessage, notify, verifyCode)
+    if (err) {
+        res.statusCode = statusCode;
+        next(err);
     } else {
-        createInvoice({ giftId, amount, notify })
+        createInvoice({ giftId, amount })
             .then(({ id, settled, payment_request, num_satoshis }) => {
                 const chargeId = id;
                 const amount = num_satoshis;
                 const status = settled === 0 ? 'unpaid' : 'paid';
 
-                try {
+                createGift({
+                    giftId,
+                    amount,
+                    chargeId,
+                    chargeStatus: status,
+                    chargeInvoice: payment_request,
+                    notify,
+                    senderName,
+                    senderMessage,
+                    verifyCode
+                });
+
+                trackEvent(req, 'create try', { giftId });
+
+                res.json({
+                    orderId: giftId,
+                    chargeId,
+                    status,
+                    lightningInvoice: { payreq: payment_request },
+                    amount,
+                    notify,
+                    lnurl: buildLNURL(giftId),
+                    senderName,
+                    senderMessage
+                });
+            })
+            .catch(next);
+    }
+});
+
+app.get('/lnurl', apiLimiter, (req, res, next) => {
+    const { amount: msatoshi, senderName = null, senderMessage = null, notify = null, verifyCode = null } = req.query;
+
+    const metadata = JSON.stringify([
+        ['text/plain', 'Create a Lightning Gift' +
+            (senderName ? ` from "${senderName}"` : '') +
+            (senderMessage ? ` with message "${senderMessage}"` : '') +
+            (verifyCode ? ` secured by code "${verifyCode}"` : '') +
+            (notify ? ` that will post a webhook to "${notify}" when redeemed` : '') +
+            '.'
+        ],
+        ['image/png;base64', require('./logo.js')]
+    ])
+
+    if (!msatoshi) {
+        // first lnurl-pay call, just return the parameters
+        let params = new URLSearchParams();
+        if (senderName) params.set('senderName', senderName);
+        if (senderMessage) params.set('senderMessage', senderMessage);
+        if (notify) params.set('notify', notify);
+        if (verifyCode) params.set('verifyCode', verifyCode);
+        let qs = params.toString();
+
+        res.json({
+            minSendable: 100000,
+            maxSendable: 500000000,
+            tag: 'payRequest',
+            metadata,
+            callback: `${process.env.SERVICE_URL}/lnurl${qs ? '?' + qs : ''}`
+        });
+    } else {
+        // second lnurl-pay call, actually create a gift and return the payment request
+        const giftId = cryptoRandomString({ length: 48 });
+
+        const { err, statusCode } = validateGiftCreation(msatoshi / 1000, senderName, senderMessage, notify, verifyCode)
+        if (err) {
+            res.statusCode = statusCode;
+            next(err);
+        } else {
+            createInvoice({ giftId, amount: msatoshi / 1000, metadata })
+                .then(({ id, settled, payment_request, num_satoshis }) => {
+                    const chargeId = id;
+                    const amount = num_satoshis;
+                    const status = settled === 0 ? 'unpaid' : 'paid';
+
                     createGift({
                         giftId,
                         amount,
@@ -98,28 +154,26 @@ app.post('/create', apiLimiter, (req, res, next) => {
                         senderName,
                         senderMessage,
                         verifyCode
-                    }).then(gift => {
-                        trackEvent(req, 'create try', { giftId });
-
-                        res.json({
-                            orderId: giftId,
-                            chargeId,
-                            status,
-                            lightningInvoice: { payreq: payment_request },
-                            amount,
-                            notify,
-                            lnurl: buildLNURL(giftId),
-                            senderName,
-                            senderMessage
-                        });
                     });
-                } catch (error) {
-                    next(error);
-                }
-            })
-            .catch(error => {
-                next(error);
-            });
+
+                    trackEvent(req, 'lnurl create try', { giftId });
+
+                    let base = process.env.SERVICE_URL.replace(/\/\/[^\.]+\./, '//');
+                    let url = `${base}/redeem/${giftId}`;
+
+                    res.json({
+                        pr: payment_request,
+                        successAction: {
+                            tag: 'url',
+                            description: "Here's your gift URL",
+                            url
+                        },
+                        disposable: false,
+                        routes: []
+                    });
+                })
+                .catch(next);
+        }
     }
 });
 
@@ -324,15 +378,6 @@ app.get('/lnurl/:giftId', apiLimiter, (req, res, next) => {
             .catch(error => {
                 next(error);
             });
-    },
-    // lnurl error handling
-    (error, req, res, next) => {
-        const statusCode = _.defaultTo(_.defaultTo(error.statusCode, res.statusCode), 500);
-        console.log('lnurl error:', error);
-        res.status(statusCode).send({
-            status: 'ERROR',
-            reason: error.message
-        });
     }
 );
 
@@ -358,6 +403,16 @@ if (process.env.NODE_ENV === 'production') {
 
 // error handling
 app.use((error, req, res, next) => {
+    // lnurl error handling
+    if (_.startsWith(req.path, '/lnurl')) {
+        console.log('lnurl error:', error);
+        res.status(statusCode).send({
+            status: 'ERROR',
+            reason: error.message
+        });
+        return
+    }
+
     const statusCode =
         _.defaultTo(_.defaultTo(error.statusCode, _.get(error, 'response.status')), _.defaultTo(res.statusCode, 500));
     // console.log('req.ip', req.ip);

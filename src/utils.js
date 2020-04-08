@@ -6,6 +6,41 @@ const crypto = require('crypto');
 
 const mixpanel = Mixpanel.init(process.env.MIXPANEL_TOKEN);
 
+exports.validateGiftCreation = (amount, senderName, senderMessage, notify, verifyCode) => {
+    var result = {};
+
+    if (!Number.isInteger(amount)) {
+        result.statusCode = 400;
+        result.err = new Error('GIFT_AMOUNT_NOT_WHOLE_NUMBER');
+    } else if (amount < 100) {
+        result.statusCode = 400;
+        result.err = new Error('GIFT_AMOUNT_UNDER_100');
+    } else if (amount > 500000) {
+        result.statusCode = 400;
+        result.err = new Error('GIFT_AMOUNT_OVER_500K');
+    } else if (!_.isNil(senderName) && !_.isString(senderName)) {
+        result.statusCode = 400;
+        result.err = new Error('SENDER_NAME_NOT_STRING');
+    } else if (!_.isNil(senderName) && senderName.length > 15) {
+        result.statusCode = 400;
+        result.err = new Error('SENDER_NAME_BAD_LENGTH');
+    } else if (!_.isNil(senderMessage) && !_.isString(senderMessage)) {
+        result.statusCode = 400;
+        result.err = new Error('SENDER_MESSAGE_NOT_STRING');
+    } else if (!_.isNil(senderMessage) && senderMessage.length > 100) {
+        result.statusCode = 400;
+        result.err = new Error('SENDER_MESSAGE_BAD_LENGTH');
+    } else if (!_.isNil(verifyCode) && !_.isNumber(verifyCode)) {
+        result.statusCode = 400;
+        result.err = new Error('VERIFY_CODE_NOT_NUMBER');
+    } else if (!_.isNil(verifyCode) && verifyCode.toString().length !== 4) {
+        result.statusCode = 400;
+        result.err = new Error('VERIFY_CODE_BAD_LENGTH');
+    }
+
+    return result;
+}
+
 exports.getInvoiceAmount = invoice => {
     const cleanInvoice = invoice.toLowerCase();
 

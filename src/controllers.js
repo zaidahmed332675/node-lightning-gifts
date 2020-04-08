@@ -1,5 +1,6 @@
 // NPM Dependencies
 const axios = require('axios');
+const shajs = require('sha.js');
 
 const { giftWithdrawTry } = require('./models');
 
@@ -31,13 +32,20 @@ function lnpayError (error) {
     throw error;
 }
 
-exports.createInvoice = ({ giftId, amount }) => {
-    const description = `Lightning gift for ${amount} sats`;
+exports.createInvoice = ({ giftId, amount, metadata }) => {
+    const description = metadata
+        ? undefined
+        : `Lightning Gift for ${amount} sats`;
+
+    const descriptionHash = metadata
+        ? shajs('sha256').update(metadata).digest('base64')
+        : undefined;
 
     return lnpay.post('/invoice', {
         passThru: { giftId },
         num_satoshis: amount,
-        memo: description
+        memo: description,
+        description_hash: descriptionHash
     })
         .then(r => r.data)
         .catch(lnpayError);

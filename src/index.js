@@ -409,7 +409,7 @@ app.use((error, req, res, next) => {
     // lnurl error handling
     if (_.startsWith(req.path, '/lnurl')) {
         console.log('lnurl error:', error);
-        res.status(statusCode).send({
+        res.status(200).send({
             status: 'ERROR',
             reason: error.message
         });

@@ -95,6 +95,7 @@ exports.trackEvent = (req, eventName, params) => {
         distinct_id: id,
         ip,
         route,
+        userIp: ip,
         ...params
     });
 };

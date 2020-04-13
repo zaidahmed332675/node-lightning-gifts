@@ -23,7 +23,7 @@ const getLnTx = id => axios.get(`https://lnpay.co/v1/lntx/${id}`, {
 })
 
 function lnpayError (error) {
-    if (error.response.data.status) {
+    if (error.response && error.response.data.status) {
       error.message = `LNPay.co error ${error.response.data.status}: ${error.response.data.message}`;
     }
 

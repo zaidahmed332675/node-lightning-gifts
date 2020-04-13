@@ -230,6 +230,11 @@ app.post(`/webhook/${process.env.LNPAY_WALLET}`, (req, res, next) => {
 app.get('/status/:chargeId', checkLimiter, (req, res, next) => {
     const { chargeId } = req.params;
 
+    if (_.isNil(chargeId)) {
+        res.statusCode = 404;
+        next(new Error('NO_CHARGE_ID'));
+    }
+
     trackEvent(req, 'charge query', { chargeId });
 
     try {
@@ -254,6 +259,11 @@ app.get('/view/:giftId', apiLimiter, (req, res, next) => {
 app.get('/gift/:giftId', checkLimiter, (req, res, next) => {
     const { giftId } = req.params;
     const { verifyCode: verifyCodeTry = null } = req.query;
+
+    if (_.isNil(giftId)) {
+        res.statusCode = 404;
+        next(new Error('NO_GIFT_ID'));
+    }
 
     trackEvent(req, 'gift query', { giftId });
 
@@ -285,6 +295,11 @@ app.get('/gift/:giftId', checkLimiter, (req, res, next) => {
 
 app.post('/redeem/:giftId', apiLimiter, (req, res, next) => {
     const { giftId } = req.params;
+
+    if (_.isNil(giftId)) {
+        res.statusCode = 404;
+        next(new Error('NO_GIFT_ID'));
+    }
 
     getGiftInfo(giftId)
         .then(response => {
@@ -386,7 +401,12 @@ app.get('/lnurl/:giftId', apiLimiter, (req, res, next) => {
 
 app.post('/redeemStatus/:withdrawalId', checkLimiter, (req, res, next) => {
     const { withdrawalId } = req.params;
-    // const { giftId } = req.body;
+
+    if (_.isNil(withdrawalId)) {
+        res.statusCode = 404;
+        next(new Error('NO_WITHDRAW_ID'));
+    }
+
     trackEvent(req, 'redeem query', { withdrawalId });
 
     checkRedeemStatus(withdrawalId)

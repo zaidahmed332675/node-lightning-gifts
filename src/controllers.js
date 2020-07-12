@@ -38,7 +38,7 @@ exports.createInvoice = ({ giftId, amount, metadata }) => {
         : `Lightning Gift for ${amount} sats`;
 
     const descriptionHash = metadata
-        ? shajs('sha256').update(metadata).digest('base64')
+        ? shajs('sha256').update(metadata).digest('hex')
         : undefined;
 
     return lnpay.post('/invoice', {

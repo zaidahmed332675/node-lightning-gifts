@@ -5,7 +5,7 @@ const shajs = require('sha.js');
 const { giftWithdrawTry } = require('./models');
 
 const lnpay = axios.create({
-    baseURL: `https://lnpay.co/v1/wallet/${process.env.LNPAY_WALLET_KEY}`,
+    baseURL: `https://api.lnpay.co/v1/wallet/${process.env.LNPAY_WALLET_KEY}`,
     timeout: 20000,
     headers: {
         'X-Api-Key': process.env.LNPAY_KEY,
@@ -14,7 +14,7 @@ const lnpay = axios.create({
     }
 });
 
-const getLnTx = id => axios.get(`https://lnpay.co/v1/lntx/${id}`, {
+const getLnTx = id => axios.get(`https://api.lnpay.co/v1/lntx/${id}`, {
     headers: {
         'X-Api-Key': process.env.LNPAY_KEY,
         'Content-Type': 'application/json',

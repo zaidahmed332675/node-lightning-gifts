@@ -1,12 +1,12 @@
 // NPM Dependencies
-const bech32 = require('bech32');
-const _ = require('lodash');
-const Mixpanel = require('mixpanel');
-const crypto = require('crypto');
+import { bech32 } from 'bech32';
+import _ from 'lodash';
+import Mixpanel from 'mixpanel';
+import crypto from 'crypto';
 
 const mixpanel = Mixpanel.init(process.env.MIXPANEL_TOKEN);
 
-exports.validateGiftCreation = (amount, senderName, senderMessage, notify, verifyCode) => {
+export const validateGiftCreation = (amount, senderName, senderMessage, notify, verifyCode) => {
     var result = {};
 
     if (!Number.isInteger(amount)) {
@@ -37,11 +37,11 @@ exports.validateGiftCreation = (amount, senderName, senderMessage, notify, verif
         result.statusCode = 400;
         result.err = new Error('VERIFY_CODE_BAD_LENGTH');
     }
-
+    
     return result;
 }
 
-exports.validateGiftRedeem = (gift, {invoice, verifyCode}) => {
+export const validateGiftRedeem = (gift, {invoice, verifyCode}) => {
     var result = {};
 
     let invoiceAmount = getInvoiceAmount(invoice);
@@ -65,7 +65,7 @@ exports.validateGiftRedeem = (gift, {invoice, verifyCode}) => {
     return result;
 }
 
-const getInvoiceAmount = invoice => {
+export const getInvoiceAmount = invoice => {
     const cleanInvoice = invoice.toLowerCase();
 
     let removedNetwork;
@@ -101,19 +101,19 @@ const getInvoiceAmount = invoice => {
     return amountAsNumber;
 };
 
-exports.buildLNURL = (orderId, verifyCode = null) => {
+export const buildLNURL = (orderId, verifyCode = null) => {
     let pin = verifyCode ? `?verifyCode=${verifyCode}` : '';
-
+    
     return bech32.encode(
         'lnurl',
         bech32.toWords(Buffer.from(
             `${process.env.SERVICE_URL}/lnurl/${orderId}${pin}`
         )),
-        1500
+        1500    
     );
 }
 
-exports.trackEvent = (req, eventName, params) => {
+export const trackEvent = (req, eventName, params) => {
     const ip = process.env.NODE_ENV === 'production' ? req.ip : req.headers["x-forwarded-for"];
     const id = crypto.createHash('md5').update(_.toString(ip)).digest("hex");
     const route = req.baseUrl || req.path;

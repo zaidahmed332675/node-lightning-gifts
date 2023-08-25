@@ -1,8 +1,7 @@
 // NPM Dependencies
-const axios = require('axios');
-const shajs = require('sha.js');
-
-const { giftWithdrawTry } = require('./models');
+import axios from 'axios';
+import shajs from 'sha.js';
+import { giftWithdrawTry } from './models.js';
 
 const lnpay = axios.create({
     baseURL: `https://api.lnpay.co/v1/wallet/${process.env.LNPAY_WALLET_KEY}`,
@@ -32,7 +31,7 @@ function lnpayError (error) {
     throw error;
 }
 
-exports.createInvoice = ({ giftId, amount, metadata }) => {
+export const createInvoice = async ({ giftId, amount, metadata }) => {
     const description = metadata
         ? undefined
         : `Lightning Gift for ${amount} sats`;
@@ -41,40 +40,52 @@ exports.createInvoice = ({ giftId, amount, metadata }) => {
         ? shajs('sha256').update(metadata).digest('hex')
         : undefined;
 
-    return lnpay.post('/invoice', {
-        passThru: { giftId },
-        num_satoshis: amount,
-        memo: description,
-        description_hash: descriptionHash
-    })
-        .then(r => r.data)
-        .catch(lnpayError);
+    try {
+        const r = await lnpay.post('/invoice', {
+            passThru: { giftId },
+            num_satoshis: amount,
+            memo: description,
+            description_hash: descriptionHash
+        });
+        return r.data;
+    } catch (error) {
+        return lnpayError(error);
+    }
 };
 
-exports.getInvoiceStatus = chargeId => {
-    return getLnTx(chargeId)
-        .then(r => r.data)
-        .then(lntx => lntx.settled === 0 ? 'unpaid' : 'paid')
-        .catch(lnpayError);
+export const getInvoiceStatus = async chargeId => {
+    try {
+        const r = await getLnTx(chargeId);
+        const lntx = r.data;
+        return lntx.settled === 0 ? 'unpaid' : 'paid';
+    } catch (error) {
+        return lnpayError(error);
+    }
 };
 
-exports.redeemGift = ({ giftId, invoice }) => {
+export const redeemGift = async ({ giftId, invoice }) => {
     giftWithdrawTry({
         giftId,
         reference: invoice
     });
 
-    return lnpay.post('/withdraw', {
-        passThru: { giftId },
-        payment_request: invoice
-    })
-        .then(r => r.data)
-        .then(data => data.lnTx)
-        .catch(lnpayError);
+    try {
+        const r = await lnpay.post('/withdraw', {
+            passThru: { giftId },
+            payment_request: invoice
+        });
+        const data = r.data;
+        return data.lnTx;
+    } catch (error) {
+        return lnpayError(error);
+    }
 };
 
-exports.checkRedeemStatus = withdrawalId => {
-    return lnpay.get(`/withdrawal/${withdrawalId}`)
-        .then(r => r.data)
-        .catch(lnpayError);
+export const checkRedeemStatus = async withdrawalId => {
+    try {
+        const r = await lnpay.get(`/withdrawal/${withdrawalId}`);
+        return r.data;
+    } catch (error) {
+        return lnpayError(error);
+    }
 };

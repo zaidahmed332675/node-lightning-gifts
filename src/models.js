@@ -1,6 +1,6 @@
 // NPM Dependencies
-const admin = require('firebase-admin');
-const axios = require('axios');
+import axios from 'axios';
+import admin from 'firebase-admin';
 
 admin.initializeApp({
     credential: admin.credential.cert({
@@ -14,7 +14,7 @@ const db = admin.firestore();
 const giftDb = process.env.NODE_ENV === 'production' ? 'prod-gifts' : 'dev-gifts';
 const dbRef = db.collection(giftDb);
 
-exports.getGiftInfo = giftId =>
+export const getGiftInfo = giftId =>
     dbRef
         .doc(giftId)
         .get()
@@ -27,10 +27,9 @@ exports.getGiftInfo = giftId =>
         })
         .catch(() => null);
 
-exports.createGift = ({
+export const createGift = ({
     giftId, chargeId, amount, chargeInvoice, chargeStatus, notify, senderName, senderMessage, verifyCode
-}) =>
-    dbRef
+}) => dbRef
         .doc(giftId)
         .set({
             id: giftId,
@@ -48,12 +47,12 @@ exports.createGift = ({
             notify
         });
 
-exports.updateGiftChargeStatus = ({ giftId, chargeStatus }) =>
+export const updateGiftChargeStatus = ({ giftId, chargeStatus }) =>
     dbRef
         .doc(giftId)
         .update({ chargeStatus });
 
-exports.giftWithdrawTry = ({ giftId, reference }) =>
+export const giftWithdrawTry = ({ giftId, reference }) =>
     dbRef
         .doc(giftId)
         .update({
@@ -64,7 +63,7 @@ exports.giftWithdrawTry = ({ giftId, reference }) =>
             }
         });
 
-exports.giftWithdrawSuccess = ({ giftId, withdrawalId, fee }) => {
+export const giftWithdrawSuccess = ({ giftId, withdrawalId, fee }) => {
     dbRef
         .doc(giftId)
         .update({
@@ -90,7 +89,7 @@ exports.giftWithdrawSuccess = ({ giftId, withdrawalId, fee }) => {
         });
 }
 
-exports.giftWithdrawFail = ({ giftId, error }) =>
+export const giftWithdrawFail = ({ giftId, error }) =>
     dbRef
         .doc(giftId)
         .update({

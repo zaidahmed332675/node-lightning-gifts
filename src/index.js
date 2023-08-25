@@ -1,30 +1,30 @@
 // NPM Dependencies
-const express = require('express');
-const cryptoRandomString = require('crypto-random-string');
-const rateLimit = require('express-rate-limit');
-const _ = require('lodash');
-const Sentry = require('@sentry/node');
+import express from 'express';
+import cryptoRandomString from 'crypto-random-string';
+import rateLimit from 'express-rate-limit';
+import _ from 'lodash';
+import * as Sentry from '@sentry/node';
 
 // Module Dependencies
-const {
+import {
     createInvoice,
     getInvoiceStatus,
     redeemGift,
     checkRedeemStatus
-} = require('./controllers');
-const {
+} from './controllers.js';
+import {
     getGiftInfo,
     createGift,
     giftWithdrawSuccess,
     giftWithdrawFail,
     updateGiftChargeStatus
-} = require('./models');
-const {
+} from './models.js';
+import {
     buildLNURL,
     trackEvent,
     validateGiftCreation,
     validateGiftRedeem
-} = require('./utils');
+} from './utils.js';
 
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -79,6 +79,8 @@ app.post('/create', apiLimiter, (req, res, next) => {
                     senderName,
                     senderMessage,
                     verifyCode
+                }).catch(error => {
+                    next(error)
                 });
 
                 trackEvent(req, 'create try', { giftId });
@@ -426,6 +428,7 @@ app.use((error, req, res, next) => {
 
 // listen for requests :)
 app.set('port', process.env.PORT || 8080);
+
 const server = app.listen(app.get('port'), () => {
     console.log(`Your app is listening on port ${server.address().port}`);
 });
